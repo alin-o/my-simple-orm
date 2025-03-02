@@ -24,7 +24,7 @@ AlinO\MyOrm is a lightweight Object-Relational Mapping (ORM) library for PHP 7.4
 
 Install the library using Composer. Ensure Composer is installed on your system, then run:
 ```bash
-composer require alin-o/my-orm
+composer require alin-o/my-simple-orm
 ```
 
 This adds the library to your composer.json file and installs it in the vendor directory.

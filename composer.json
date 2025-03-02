@@ -1,5 +1,5 @@
 {
-    "name": "alin-o/my-orm",
+    "name": "alin-o/my-simple-orm",
     "description": "Mysql/Mariadb Simple ORM",
     "license": "GPL-3.0-or-later",
     "authors": [
