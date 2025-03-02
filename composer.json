@@ -1,0 +1,28 @@
+{
+    "name": "alin-o/my-simple-orm",
+    "description": "Mysql/Mariadb Simple ORM",
+    "license": "GPL-3.0-or-later",
+    "authors": [
+        {
+            "name": "Alin Olteanu",
+            "email": "oalin79@gmail.com",
+            "homepage": "https://github.com/alin-o",
+            "role": "Developer"
+        }
+    ],
+    "autoload": {
+        "psr-4": {
+            "AlinO\\MyOrm\\": "src/",
+            "Tests\\": "Tests/"
+        }
+    },
+    "require": {
+        "php": ">=7.4.0",
+        "alin-o/mysqli-database-class": "^3.0"
+    },
+    "require-dev": {
+        "symfony/dotenv": "^5.4",
+        "phpunit/phpunit": "^9.6"
+    },
+    "version": "1.0.0"
+}
