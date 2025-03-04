@@ -225,16 +225,24 @@ abstract class Model
      * Finds a model instance by its ID.
      *
      * @param mixed $id The ID to search for
+     * @param string|null $field The field to search in (default: null - use ID field)
      * @return static|null The model instance or null if not found
      */
-    public static function find($id)
+    public static function find($id, $field = null)
     {
         if (!$id) {
             return null;
         }
-        $i = new static($id);
-        if ($i->_data) {
-            return $i;
+        if (!$field) {
+            $i = new static($id);
+            if ($i->_data) {
+                return $i;
+            }
+            return null;
+        }
+        $data = static::db()->where($field, $id)->getOne(static::$table, static::getSelect());
+        if ($data) {
+            return new static($data);
         }
         return null;
     }
@@ -243,12 +251,13 @@ abstract class Model
      * Finds multiple model instances by their IDs in a single query.
      *
      * @param array<mixed> $ids Array of IDs to search for
+     * @param string|null $field The field to search in (default: null - use ID field)
      * @return array<static> Array of model instances
      */
-    public static function findAll(array $ids)
+    public static function findAll(array $ids, $field = null)
     {
         if (empty($ids)) return [];
-        $rows = static::db()->where(static::$idField, $ids, 'IN')->get(static::$table);
+        $rows = static::db()->where($field ?: static::$idField, $ids, 'IN')->get(static::$table);
         return array_map(fn($data) => new static($data), $rows);
     }
 

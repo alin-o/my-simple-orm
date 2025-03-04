@@ -92,9 +92,19 @@ Find a record by ID:
 $user = User::find(1);
 ```
 
+Find a record by field:
+```php
+$user = User::find('janedoe@example.com', 'email');
+```
+
 Find multiple records by IDs:
 ```php
 $users = User::findAll([1, 2, 3]);
+```
+
+Find multiple records by field:
+```php
+$user = User::find(['johndoe@example.com', 'janedoe@example.com'], 'email');
 ```
 
 List all records:
