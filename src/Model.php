@@ -3,6 +3,7 @@
 namespace AlinO\MyOrm;
 
 use AlinO\Db\DbException;
+use AlinO\Db\MysqliDb;
 use Exception;
 
 /**
@@ -17,7 +18,7 @@ abstract class Model
     /**
      * @var string The database name to use for this model (empty for default)
      * override this in your model
-     * if not set it will use the default connection from global $mdb variable
+     * if not set it will use the default connection
      */
     protected static $database = '';
 
@@ -209,16 +210,15 @@ abstract class Model
      */
     public static function db()
     {
-        global $mdb;
         $dbName = static::$database ?: 'default';
         if (isset(static::$_conn[$dbName])) {
             return static::$_conn[$dbName];
         }
-        if (empty(static::$database) && $mdb instanceof \AlinO\Db\MysqliDb) {
-            static::$_conn[$dbName] = $mdb;
-            return $mdb;
+        if (empty(static::$database)) {
+            static::$_conn[$dbName] = MysqliDb::getInstance();
+            return static::$_conn[$dbName];
         }
-        throw new DbException("Database connection `" . static::$database . "` not found");
+        throw new DbException("Database connection `$dbName` not found");
     }
 
     /**

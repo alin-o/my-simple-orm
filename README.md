@@ -32,7 +32,6 @@ This adds the library to your composer.json file and installs it in the vendor d
 
 Set up the default database connection using the MysqliDb class provided by the library:
 ```php
-global $mdb;
 $mdb = new \AlinO\Db\MysqliDb('localhost', 'username', 'password', 'database_name');
 ```
 
