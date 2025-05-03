@@ -1,0 +1,18 @@
+.
+├── MySimpleORM.tree
+├── README.md
+├── Tests
+│   ├── Feature
+│   │   └── ModelRelationsTest.php
+│   ├── Models
+│   │   ├── Address.php
+│   │   ├── Role.php
+│   │   └── User.php
+│   └── TestCase.php
+├── composer.json
+├── composer.lock
+├── phpunit.xml
+└── src
+    └── Model.php
+
+5 directories, 11 files
