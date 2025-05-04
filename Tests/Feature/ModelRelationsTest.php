@@ -37,7 +37,7 @@ class ModelRelationsTest extends TestCase
                 }
             }
             // Delete related user_roles
-            User::db()->where('user_id', $this->user->id)->delete('user_roles');
+            User::where('user_id', $this->user->id)->delete('user_roles');
             $this->user->delete();
         }
         parent::tearDown();
@@ -46,12 +46,12 @@ class ModelRelationsTest extends TestCase
     public static function setUpBeforeClass(): void
     {
         parent::setUpBeforeClass();
-        User::db()->where('email', 'testuser_%@example.com', 'LIKE')->update('users', ['shipping_address' => null, 'billing_address' => null]);
+        User::where('email', 'testuser_%@example.com', 'LIKE')->update('users', ['shipping_address' => null, 'billing_address' => null]);
         Address::db()
             ->join('users', 'users.id = addresses.user_id', 'LEFT')
             ->where('users.email', 'testuser_%@example.com', 'LIKE')
             ->delete('addresses');
-        User::db()->where('email', 'testuser_%@example.com', 'LIKE')->delete('users');
+        User::where('email', 'testuser_%@example.com', 'LIKE')->delete();
     }
 
     // User Tests

@@ -212,13 +212,31 @@ abstract class Model
     {
         $dbName = static::$database ?: 'default';
         if (isset(static::$_conn[$dbName])) {
-            return static::$_conn[$dbName];
+            $mdb = static::$_conn[$dbName];
         }
         if (empty(static::$database)) {
             static::$_conn[$dbName] = MysqliDb::getInstance();
-            return static::$_conn[$dbName];
+            $mdb = static::$_conn[$dbName];
+        }
+        if (@$mdb) {
+            $mdb->setModel(static::getTable(), static::getSelect());
+            return $mdb;
         }
         throw new DbException("Database connection `$dbName` not found");
+    }
+
+    /**
+     * Gets the database builder with a where condition
+     *
+     * @return \AlinO\Db\MysqliDb The database connection instance
+     */
+    public static function where($whereProp, $whereValue = 'DBNULL', $operator = '=', $cond = 'AND')
+    {
+        $mdb = static::db();
+        $mdb->resetQuery();
+        $mdb->setModel(static::getTable(), static::getSelect());
+        $mdb->where($whereProp, $whereValue, $operator, $cond);
+        return $mdb;
     }
 
     /**

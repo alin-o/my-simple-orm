@@ -16,9 +16,18 @@
             "Tests\\": "Tests/"
         }
     },
+    "repositories": [
+        {
+            "type": "path",
+            "url": "../PHP-MySQLi-Database-Class",
+            "options": {
+                "symlink": true
+            }
+        }
+    ],
     "require": {
         "php": ">=7.4.0",
-        "alin-o/mysqli-database-class": "^3.1"
+        "alin-o/mysqli-database-class": "@dev"
     },
     "require-dev": {
         "symfony/dotenv": "^5.4",
