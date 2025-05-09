@@ -8,16 +8,16 @@
     "packages": [
         {
             "name": "alin-o/mysqli-database-class",
-            "version": "3.1.0",
+            "version": "3.1.4",
             "source": {
                 "type": "git",
                 "url": "https://github.com/alin-o/PHP-MySQLi-Database-Class.git",
-                "reference": "e402fd83426ee92d9c84bd0009a76801edbf4412"
+                "reference": "47644d0fa6846df47ba5f71eeeb1be22cb2e1473"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/alin-o/PHP-MySQLi-Database-Class/zipball/e402fd83426ee92d9c84bd0009a76801edbf4412",
-                "reference": "e402fd83426ee92d9c84bd0009a76801edbf4412",
+                "url": "https://api.github.com/repos/alin-o/PHP-MySQLi-Database-Class/zipball/47644d0fa6846df47ba5f71eeeb1be22cb2e1473",
+                "reference": "47644d0fa6846df47ba5f71eeeb1be22cb2e1473",
                 "shasum": ""
             },
             "require": {
@@ -55,9 +55,9 @@
             ],
             "description": "PHP MySQL Wrapper which utilizes MySQLi and prepared statements",
             "support": {
-                "source": "https://github.com/alin-o/PHP-MySQLi-Database-Class/tree/v3.1.0"
+                "source": "https://github.com/alin-o/PHP-MySQLi-Database-Class/tree/v3.1.4"
             },
-            "time": "2025-05-04T07:35:45+00:00"
+            "time": "2025-05-09T07:56:40+00:00"
         }
     ],
     "packages-dev": [

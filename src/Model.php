@@ -219,7 +219,7 @@ abstract class Model
             $mdb = static::$_conn[$dbName];
         }
         if (@$mdb) {
-            $mdb->setModel(static::getTable(), static::getSelect());
+            $mdb->setModel(static::class, static::getTable(), static::getSelect());
             return $mdb;
         }
         throw new DbException("Database connection `$dbName` not found");
@@ -234,7 +234,7 @@ abstract class Model
     {
         $mdb = static::db();
         $mdb->resetQuery();
-        $mdb->setModel(static::getTable(), static::getSelect());
+        $mdb->setModel(static::class, static::getTable(), static::getSelect());
         $mdb->where($whereProp, $whereValue, $operator, $cond);
         return $mdb;
     }
