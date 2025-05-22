@@ -125,6 +125,11 @@ abstract class TestCase extends \PHPUnit\Framework\TestCase
                 ADD CONSTRAINT `user_roles_ibfk_1` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`),
                 ADD CONSTRAINT `user_roles_ibfk_2` FOREIGN KEY (`role_id`) REFERENCES `roles` (`id`)
             )");
+
+            $db->rawQuery("INSERT IGNORE INTO users (id, username, email, fname, lname, join_tmst) VALUES
+                (123, 'testuser1', 'existing@example.com', 'Test', 'User', UNIX_TIMESTAMP())");
+            $db->rawQuery("INSERT IGNORE INTO users (id, username, email, fname, lname, join_tmst) VALUES
+                (456, 'testuser2', 'another_existing@example.com', 'Test', 'User', UNIX_TIMESTAMP())");
         }
     }
 }

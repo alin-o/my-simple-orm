@@ -167,7 +167,11 @@ abstract class Model
      */
     public static function setConnection($db, $name = 'default')
     {
-        static::$_conn[$name] = $db;
+        if (empty($db)) {
+            unset(static::$_conn[$name]);
+        } else {
+            static::$_conn[$name] = $db;
+        }
     }
 
     /**
@@ -182,12 +186,21 @@ abstract class Model
     }
 
     /**
+     * Resets all database connections.
+     */
+    public static function resetConnections()
+    {
+        static::$_conn = [];
+    }
+
+    /**
      * Sets the model's data from an array, separating database fields and extra fields.
      *
      * @param array<string, mixed> $data Key-value pairs to set
      */
     public function setData($data)
     {
+        $this->_fields = [];
         $this->_extra = [];
         $this->_data = [];
         $this->_changed = [];
@@ -213,8 +226,7 @@ abstract class Model
         $dbName = static::$database ?: 'default';
         if (isset(static::$_conn[$dbName])) {
             $mdb = static::$_conn[$dbName];
-        }
-        if (empty(static::$database)) {
+        } elseif (empty(static::$database)) {
             static::$_conn[$dbName] = MysqliDb::getInstance();
             $mdb = static::$_conn[$dbName];
         }
@@ -824,13 +836,14 @@ abstract class Model
      *
      * @param array<string, mixed> &$data The data array to fill (passed by reference)
      */
-    public static function fillData(&$data)
+    public static function fillData(&$data): array
     {
         foreach (static::$emptyFields as $f) {
             if (!isset($data[$f])) {
                 $data[$f] = 0;
             }
         }
+        return $data;
     }
 
     /**
@@ -1018,6 +1031,13 @@ abstract class Model
                 if (is_a($value, $class)) {
                     static::db()->ignore()->insert($join, [$fk => $value->id, $jfk => $this->id]);
                 } elseif (is_array($value)) {
+                    if (is_a(current($value), $class)) {
+                        $ids = [];
+                        foreach ($value as $v) {
+                            $ids[] = $v->id;
+                        }
+                        $value = $ids;
+                    }
                     static::db()->where($jfk, $this->id)
                         ->where($fk, $value, 'NOT IN')
                         ->delete($join);
@@ -1106,5 +1126,10 @@ abstract class Model
             return $class::find($id);
         }
         return null;
+    }
+
+    public function getChanges()
+    {
+        return $this->_changed;
     }
 }

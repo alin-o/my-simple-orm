@@ -13,7 +13,7 @@
     "autoload": {
         "psr-4": {
             "AlinO\\MyOrm\\": "src/",
-            "Tests\\": "Tests/"
+            "Tests\\": "tests/"
         }
     },
     "require": {
@@ -24,5 +24,5 @@
         "symfony/dotenv": "^5.4",
         "phpunit/phpunit": "^9.6"
     },
-    "version": "1.2.1"
+    "version": "1.2.2"
 }

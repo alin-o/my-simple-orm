@@ -33,6 +33,7 @@ class User extends Model
     public $blockCreate = false;
     public $blockUpdate = false;
     public $blockDelete = false;
+    public $isLoaded = false;
 
     protected function beforeCreate(): bool
     {
@@ -74,5 +75,16 @@ class User extends Model
     protected function afterDelete()
     {
         $this->afterDeleteCalled = true;
+        $this->isLoaded = false;
+    }
+
+    protected function loaded()
+    {
+        $this->isLoaded = true;
+    }
+
+    public function isLoaded(): bool
+    {
+        return $this->isLoaded;
     }
 }

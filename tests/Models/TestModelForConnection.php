@@ -6,6 +6,6 @@ use AlinO\MyOrm\Model;
 
 class TestModelForConnection extends Model
 {
-    public static string $database = 'test_db_conn';
-    protected static string $table = 'test_model_table';
+    protected static $database = 'test_db_conn';
+    protected static $table = 'test_model_table';
 }
