@@ -87,4 +87,34 @@ class User extends Model
     {
         return $this->isLoaded;
     }
+
+    // Eloquent-style relationship methods for testing
+
+    public function country()
+    {
+        // Assumes 'country_id' is a field in the 'users' table
+        return $this->belongsTo(Country::class, 'country_id', 'id');
+    }
+
+    public function profile()
+    {
+        // User has one UserProfile, UserProfile table has 'user_id'
+        return $this->hasOne(UserProfile::class, 'user_id', 'id');
+    }
+
+    public function posts()
+    {
+        return $this->hasMany(Post::class, 'user_id', 'id');
+    }
+
+    public function eloquent_addresses()
+    {
+        return $this->hasMany(Address::class, 'user_id', 'id');
+    }
+
+    public function eloquent_roles()
+    {
+        // User belongs to many Roles through 'user_roles' pivot table
+        return $this->belongsToMany(Role::class, 'user_roles', 'user_id', 'role_id');
+    }
 }

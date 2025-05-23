@@ -11,4 +11,10 @@ class Role extends Model
     protected static $relations = [
         'users' => [Model::HAS_MANY_THROUGH, User::class, 'user_id', 'user_roles', 'role_id'],
     ];
+
+    // Eloquent-style relationship method for testing
+    public function usersEloquent()
+    {
+        return $this->belongsToMany(User::class, 'user_roles', 'role_id', 'user_id');
+    }
 }

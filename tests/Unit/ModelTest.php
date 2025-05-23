@@ -362,33 +362,90 @@ class ModelTest extends TestCase
         // The current implementation of toArray + with simply adds the foreign key to the output if the relation is HAS_ONE
         // and the foreign key is set on the model. This is what we will test.
         $userWithFk = new User(['id' => 1, 'shipping_address' => 123]);
+
+        // Manually add 'shipping_address' to _fields if not already (constructor with ID doesn't populate _fields from keys)
+        $refUserWithFk = new \ReflectionObject($userWithFk);
+        $fieldsProp = $refUserWithFk->getProperty('_fields');
+        $fieldsProp->setAccessible(true);
+        $currentFields = $fieldsProp->getValue($userWithFk);
+        if (!in_array('shipping_address', $currentFields)) {
+            $currentFields[] = 'shipping_address';
+            $fieldsProp->setValue($userWithFk, $currentFields);
+        }
+
         $arrayWithRelation = $userWithFk->with('saddress')->toArray();
         $this->assertArrayHasKey('saddress', $arrayWithRelation, "toArray with 'with' for HAS_ONE should include relation key.");
         $this->assertEquals(123, $arrayWithRelation['saddress'], "saddress value in toArray with 'with' is incorrect.");
 
 
         // Scenario 2: Test when the relation data is explicitly set (simulating it was loaded)
-        $relatedAddressMock = new Address(['id' => 123, 'street' => "123 Main St"]);
+        // For this to work correctly with setRelated, the user needs to exist or be saveable.
+        // Let's create a user for this.
+        $userForHasOneSet = User::create(['username' => 'user_hasone_set_' . uniqid(), 'email' => 'user_hasone_set_' . uniqid() . '@example.com']);
+        $this->assertNotNull($userForHasOneSet);
 
-        $userWithLoadedRelation = new User(['id' => 2, 'shipping_address' => 123]);
-        $userWithLoadedRelation->saddress = $relatedAddressMock; // Manually setting the loaded relation
+        // Create a new address using new Address() and save()
+        // Do not pre-set 'id', let save() handle the insert and ID generation.
+        $relatedAddressData = [
+            'address' => "123 Main St " . uniqid(), // Unique address for test isolation
+            'user_id' => $userForHasOneSet->id(),
+            'country_id' => 1, // Assuming country_id 1 exists (seeded in TestCase)
+            'fname' => 'Test', // Add required/typical fields for Address
+            'lname' => 'User'
+        ];
+        $relatedAddressMock = new Address($relatedAddressData);
+        $saved = $relatedAddressMock->save(); // Save the address to ensure it's valid
+        $this->assertTrue($saved, "Related address should be saved successfully.");
+        $this->assertNotNull($relatedAddressMock->id(), "Related address ID should be set after save.");
+
+        // We are testing the __set behavior which calls setRelated.
+        // setRelated for HAS_ONE updates the FK on the current model.
+        $userWithLoadedRelation = User::find($userForHasOneSet->id()); // Get a fresh instance
+        $userWithLoadedRelation->saddress = $relatedAddressMock; // Assign the saved address model
 
         $arrayWithLoadedRelation = $userWithLoadedRelation->with('saddress')->toArray();
         $this->assertArrayHasKey('saddress', $arrayWithLoadedRelation);
-        $this->assertEquals($relatedAddressMock->id, $arrayWithLoadedRelation['saddress']);
+        $this->assertEquals($relatedAddressMock->id(), $arrayWithLoadedRelation['saddress']);
+
+        // Cleanup
+        if ($relatedAddressMock && $relatedAddressMock->id()) { // Check if it has an ID before deleting
+            $relatedAddressMock->delete();
+        }
+        $userForHasOneSet->delete();
 
 
         // For HAS_MANY_THROUGH like 'roles', getRelatedIds usually hits the DB.
-        // For a unit test of toArray, we'd ideally mock getRelatedIds or the relation itself.
-        // If we call with('roles'), and roles is not loaded, toArray might include an empty array or null.
-        // If roles *is* loaded (e.g., $user->roles = [new Role(), new Role()]), then toArray should include that.
-        $userWithRoles = new User(['id' => 3]);
-        $roleMocks = [new Role(['id' => 1, 'name' => 'Admin']), new Role(['id' => 2, 'name' => 'Editor'])];
-        $userWithRoles->roles = $roleMocks; // Simulate roles relation is loaded
+        $userForRolesTest = User::create([
+            'username' => 'user_for_roles_toarray_' . uniqid(),
+            'email' => 'roles_toarray_' . uniqid() . '@example.com'
+        ]);
+        $this->assertNotNull($userForRolesTest, "User for roles test could not be created.");
 
-        $arrayWithRoles = $userWithRoles->with('roles')->toArray();
+        $role1 = Role::find(1) ?? Role::create(['id' => 1, 'name' => 'Admin_toArray_' . uniqid()]);
+        $this->assertNotNull($role1, "Role 1 could not be found/created.");
+        $role2 = Role::create(['name' => 'Editor_toArray_' . uniqid()]);
+        $this->assertNotNull($role2, "Role 2 could not be created.");
+
+        // Assign roles to the user. This updates the pivot table.
+        $userForRolesTest->roles = [$role1->id(), $role2->id()];
+
+        $arrayWithRoles = $userForRolesTest->with('roles')->toArray();
+
         $this->assertArrayHasKey('roles', $arrayWithRoles);
-        $this->assertEquals([1, 2], $arrayWithRoles['roles']);
+        $expectedRoleIds = [$role1->id(), $role2->id()];
+        $actualRoleIds = $arrayWithRoles['roles'];
+        $this->assertIsArray($actualRoleIds, "'roles' in toArray() should be an array of IDs.");
+        sort($expectedRoleIds);
+        sort($actualRoleIds);
+        $this->assertEquals($expectedRoleIds, $actualRoleIds, "The role IDs in toArray() are not as expected.");
+
+        // Cleanup
+        User::db()->where('user_id', $userForRolesTest->id())->delete('user_roles');
+        $userForRolesTest->delete();
+        // Role 1 is often seeded; avoid deleting if it was the original seed.
+        // If $role1 was created with a unique name in this test, it should be deleted.
+        // For simplicity, we assume Role 1 is managed globally or re-creatable.
+        $role2->delete();
     }
 
     public function testAssureUnique()
