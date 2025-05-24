@@ -583,8 +583,6 @@ abstract class Model
             if ($p = strpos($property, '_count')) {
                 if ($p == strlen($property) - 6) {
                     $prop = substr($property, 0, $p);
-                    // Note: countRelated currently only works with static::$relations.
-                    // For method-defined relations, you'd typically do count($this->$prop()).
                     return $this->countRelated($prop);
                 }
             }
@@ -679,15 +677,24 @@ abstract class Model
         } else {
             $r = $this->_data;
         }
-        foreach ($this->_withRelated as $rel) {
-            $r[$rel] = $this->getRelatedIds($rel);
+        foreach ($this->_withRelated as $relString) {
+            // Parse relation string, e.g., "relationName" or "relationName:col1,col2"
+            list($rel, $colsSpec) = array_pad(explode(':', $relString, 2), 2, null);
+
+            if (!empty(static::$relations[$rel])) {
+                $relatedClass = static::$relations[$rel][1];
+                // Default to ID field if no columns specified, otherwise parse comma-separated columns
+                $columnsToFetch = $colsSpec ? explode(',', $colsSpec) : [$relatedClass::getIdField()];
+                $r[$rel] = $this->getRelatedColumns($rel, $columnsToFetch);
+            }
         }
+        $this->_withRelated = []; // Clear after use
         return $r;
     }
 
     /**
      * Returns a subset of the model data with only specified fields.
-     *
+     * 
      * @param string|array<string> $fields Comma-separated string or array of field names
      * @return array<string, mixed> Filtered data array
      */
@@ -749,6 +756,16 @@ abstract class Model
             }
         }
         return $select;
+    }
+
+    /**
+     * Gets the AES encrypted fields for the model.
+     *
+     * @return array<string>
+     */
+    public static function getStaticAesFields(): array
+    {
+        return static::$aes_fields;
     }
 
     /**
@@ -977,6 +994,80 @@ abstract class Model
     }
 
     /**
+     * Gets specific columns of related items for a specified relation without instantiating full models.
+     *
+     * @param string $related The relation name.
+     * @param array<string> $columns The columns to retrieve from the related table.
+     * @return array<array<string, mixed>> An array of associative arrays, where each inner array contains the requested columns for a related item.
+     *                      Returns an empty array if the relation is invalid or no related items are found.
+     */
+    public function getRelatedColumns(string $related, array $columns): array
+    {
+        if (empty(static::$relations[$related])) {
+            return [];
+        }
+        $r = static::$relations[$related];
+        if (!is_array($r) || count($r) < 3) { // Basic validation for relation structure
+            return [];
+        }
+
+        list($type, $class, $fk) = $r;
+
+        /** @var Model $class */
+        // Ensure the ID field of the related class is always selected.
+        $relatedIdField = $class::getIdField();
+        $selectColumns = array_unique(array_merge($columns, [$relatedIdField]));
+
+        $relatedAesFields = $class::getStaticAesFields();
+        $selectParts = [];
+        foreach ($selectColumns as $col) {
+            $trimmedCol = trim($col);
+            if (in_array($trimmedCol, $relatedAesFields)) {
+                $selectParts[] = "AES_DECRYPT(`{$trimmedCol}`, @aes_key) AS `{$trimmedCol}`";
+            } else {
+                $selectParts[] = "`{$trimmedCol}`";
+            }
+        }
+        $selectString = implode(', ', $selectParts);
+
+        switch ($type) {
+            case Model::BELONGS_TO:
+            case Model::HAS_ONE: // Assumes $fk is a property on $this model holding the related ID, as per existing ORM convention
+                $foreignKeyValue = $this->{$fk} ?? null;
+                if ($foreignKeyValue === null) {
+                    return [];
+                }
+                $data = $class::db()->where($class::getIdField(), $foreignKeyValue)->getOne($class::getTable(), $selectString);
+                return $data ? [$data] : [];
+            case Model::HAS_MANY:
+                if ($this->id === null) return [];
+                $results = $class::db()->where($fk, $this->id)
+                    ->get($class::getTable(), null, $selectString);
+                return $results ?: [];
+
+            case Model::BELONGS_TO_MANY:
+            case Model::HAS_MANY_THROUGH:
+                if (count($r) < 5) return []; // Expects pivot table, current model FK on pivot, related model FK on pivot
+                $pivotTable = $r[3];
+                $currentModelFkOnPivot = $r[4];
+                $relatedModelFkOnPivot = $fk; // This is $r[2]
+
+                if ($this->id === null) return [];
+                $relatedIdsData = static::db()->where($currentModelFkOnPivot, $this->id)
+                    ->get($pivotTable, null, $relatedModelFkOnPivot);
+
+                if (empty($relatedIdsData)) return [];
+                $idsToFetch = array_column($relatedIdsData, $relatedModelFkOnPivot);
+                if (empty($idsToFetch)) return [];
+
+                $results = $class::db()->where($class::getIdField(), $idsToFetch, 'IN')
+                    ->get($class::getTable(), null, $selectString);
+                return $results ?: [];
+        }
+        return [];
+    }
+
+    /**
      * Gets the IDs of related items for a specified relation.
      *
      * @param string $related The relation name
@@ -985,42 +1076,29 @@ abstract class Model
     public function getRelatedIds($related)
     {
         if (empty(static::$relations[$related])) {
-            return null;
+            return [];
         }
         $r = static::$relations[$related];
-        if (!is_array($r)) {
-            return null;
+        if (!is_array($r) || count($r) < 3) {
+            return [];
         }
         list($type, $class, $fk) = $r;
+
+        // For BELONGS_TO/HAS_ONE, return the single foreign key value directly, wrapped in an array for consistency.
+        // This assumes $this->$fk holds the ID of the related model, as per ORM convention.
         switch ($type) {
             case Model::BELONGS_TO:
             case Model::HAS_ONE:
-                return $this->$fk;
-
+                $id = $this->$fk ?? null;
+                return $id !== null ? [$id] : [];
             case Model::HAS_MANY:
-                $cid = $class::getIdField();
-                $ids = $class::db()->where($fk, $this->id)
-                    ->get($class::getTable(), null, $cid);
-                $ret = [];
-                foreach ($ids as $i) {
-                    $ret[] = $i[$cid];
-                }
-                return $ret;
-
             case Model::BELONGS_TO_MANY: // Fall through
             case Model::HAS_MANY_THROUGH:
-                $cid = $class::getIdField();
-                $join = $r[3];
-                $jfk = $r[4];
-                $ids = static::db()->where($jfk, $this->id)
-                    ->get($join, null, $fk);
-                $ret = [];
-                foreach ($ids as $i) {
-                    $ret[] = $i[$fk];
-                }
-                return $ret;
+                $idField = $class::getIdField();
+                $results = $this->getRelatedColumns($related, [$idField]); // Fetch only the ID column
+                return array_column($results, $idField); // Pluck the ID field into a flat array
         }
-        return null;
+        return [];
     }
 
     /**
@@ -1120,15 +1198,18 @@ abstract class Model
 
     /**
      * Specifies relations to include in toArray() output.
+     * Can specify columns to fetch for related models (e.g., 'relationName:column1,column2').
      *
-     * @param string ...$related Variable number of relation names
+     * @param string ...$related Variable number of relation names, optionally with columns.
      * @return $this The current instance for chaining
      */
     public function with(...$related)
     {
-        foreach ($related as $r) {
-            if (!empty(static::$relations[$r])) {
-                $this->_withRelated[] = $r;
+        $this->_withRelated = []; // Reset if called multiple times, or append based on desired behavior
+        foreach ($related as $relString) {
+            list($relName) = explode(':', $relString, 2);
+            if (!empty(static::$relations[$relName])) {
+                $this->_withRelated[] = $relString; // Store the full string 'relationName:column1,column2'
             }
         }
         return $this;

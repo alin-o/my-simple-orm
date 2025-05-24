@@ -328,8 +328,9 @@ class ModelRelationsTest extends TestCase
         $data = $this->user->with('roles')->toArray();
         $this->assertArrayHasKey('roles', $data, 'Should include roles');
         $this->assertIsArray($data['roles'], 'Roles should be an array');
-        $this->assertContains($role1->id, $data['roles'], 'Should include role1 ID');
-        $this->assertContains($role2->id, $data['roles'], 'Should include role2 ID');
+        $roleIds = array_column($data['roles'], 'id');
+        $this->assertContains($role1->id, $roleIds, 'Should include role1 ID');
+        $this->assertContains($role2->id, $roleIds, 'Should include role2 ID');
         $role1->delete();
         $role2->delete();
     }

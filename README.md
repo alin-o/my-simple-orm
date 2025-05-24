@@ -9,9 +9,10 @@ AlinO\MyOrm is a lightweight Object-Relational Mapping (ORM) library for PHP 7.4
 * Flexible Database Connections: Supports multiple database connections per model.
 * Lifecycle Hooks: Provides hooks like `beforeCreate`, `afterCreate`, etc., for custom logic.
 * Relationships: Supports `BELONGS_TO`, `HAS_ONE`, `HAS_MANY` and `HAS_MANY_THROUGH`.
-* AES Encryption: Automatically encrypts/decrypts specified fields.
+* AES Encryption: Automatically encrypts/decrypts specified fields on the current model instance.
 * Search Indexing: Updates search indexes based on defined fields.
 * Utility Methods: `assureUnique`, `list`, `toArray`, etc.
+* Efficient Related Data Retrieval: Methods like `getRelatedColumns` and `getRelatedIds` for fetching specific related data without full model hydration.
 
 ## Requirements
 
@@ -219,10 +220,37 @@ $data = $user->toArray(); // Includes database fields
 $dataWithExtra = $user->toArray(true); // Includes extra fields
 ```
 
-Include related data:
+Include related data using `with()`:
+
+The `with()` method specifies relations to be included when `toArray()` is called.
+
+*   By default (e.g., `with('addresses')`), it includes an array of associative arrays for the related models. Each associative array will contain the primary ID of the related model.
+*   You can specify which columns from the related models to include using the format `'relationName:column1,column2'` (e.g., `with('addresses:street,city')`). The primary ID of the related model will always be included in addition to your specified columns.
+
 ```php
+// Default: Fetching IDs of related addresses
 $user = User::find(1)->with('addresses');
-$data = $user->toArray(); // Includes related addresses
+$data = $user->toArray();
+// $data['addresses'] will be like:
+// [
+//   ['id' => 101], // Assuming Address ID is 101 and 'id' is its primary key
+//   ['id' => 102]  // Assuming Address ID is 102
+// ]
+
+// Specify columns for the related 'addresses'
+$user = User::find(1);
+$data = $user->with('addresses:street,city')->toArray();
+// $data['addresses'] will be like:
+// [
+//   ['id' => 101, 'street' => '123 Main St', 'city' => 'Anytown'],
+//   ['id' => 102, 'street' => '456 Oak Ave', 'city' => 'Otherville']
+// ]
+
+// For BELONGS_TO or HAS_ONE relations, the structure is an array containing zero or one associative array:
+$address = Address::find(101); 
+$addressData = $address->with('user:username')->toArray(); // Assuming Address BELONGS_TO User
+// $addressData['user'] could be: [['id' => 1, 'username' => 'johndoe']]
+// or [] if no related user is found or the foreign key is null.
 ```
 
 Get a subset of fields:
@@ -233,6 +261,45 @@ $partial = $user->only('username, email');
 Convert to JSON:
 ```php
 $json = (string) $user; // Uses __toString()
+```
+
+### Advanced Relationship Data Retrieval
+
+For more direct and potentially performant ways to fetch data from related models without full model hydration, you can use the following methods:
+
+#### `getRelatedColumns(string $relationName, array $columns): array`
+
+This method fetches specific columns from related models.
+
+*   **Parameters**:
+    *   `$relationName`: The name of the relation (e.g., `'posts'`).
+    *   `$columns`: An array of column names to retrieve from the related model (e.g., `['title', 'slug']`).
+*   **Returns**: An array of associative arrays. Each inner array represents a related record and contains the requested columns. The primary ID field of the related model is always included in the results, even if not explicitly specified in the `$columns` array.
+
+```php
+class User extends \AlinO\MyOrm\Model {
+    protected static $relations = [
+        'posts' => [Model::HAS_MANY, Post::class, 'user_id'],
+    ];
+}
+
+$user = User::find(1);
+
+// Get 'title' and 'slug' for all posts by this user
+$postDetails = $user->getRelatedColumns('posts', ['title', 'slug']);
+// $postDetails might look like:
+// [
+//   ['id' => 10, 'title' => 'My First Post', 'slug' => 'my-first-post'], // 'id' is Post's primary key
+//   ['id' => 15, 'title' => 'Another Update', 'slug' => 'another-update']
+// ]
+```
+
+#### `getRelatedIds(string $relationName): array`
+
+This method efficiently retrieves a flat array of primary key IDs for the related models. It utilizes `getRelatedColumns` internally to fetch only the ID column.
+```php
+$user = User::find(1);
+$postIds = $user->getRelatedIds('posts'); // Returns, for example: [10, 15]
 ```
 
 ### Lifecycle Hooks
@@ -258,17 +325,17 @@ Available hooks: `beforeCreate`, `afterCreate`, `beforeUpdate`, `afterUpdate`, `
 ### AES Encryption
 
 #### Set AES Key
-the `aes_key` variable is required at database level
-set it like this
+The `@aes_key` session variable is required at the database level for AES encryption and decryption to work.
+Set it after establishing your database connection:
 ```php
 $mdb = new \AlinO\Db\MysqliDb('localhost', 'username', 'password', 'database_name');
-$aes = getenv('DB_AES');
-if (!empty($aes)) {
-    $mdb->rawQuery("SET @aes_key = SHA2('$aes', 512)");
+$aesKey = getenv('DB_AES'); // Or your preferred way to get the key
+if (!empty($aesKey)) {
+    $mdb->rawQuery("SET @aes_key = SHA2(?, 512)", [$aesKey]);
 }
 ```
 
-Fields in `$aes_fields` are automatically encrypted when saved and decrypted when retrieved:
+Fields listed in a model's `static $aes_fields` array are automatically encrypted when saved and decrypted when retrieved directly on *that model instance* (e.g., when accessing `$user->email`).
 ```php
 class User extends \AlinO\MyOrm\Model {
     protected static $aes_fields = ['email'];
@@ -276,7 +343,7 @@ class User extends \AlinO\MyOrm\Model {
 
 $user->email = 'secret@example.com';
 $user->save();
-echo $user->email; // Outputs: secret@example.com
+echo $user->email; // Outputs: secret@example.com (decrypted)
 ```
 
 ### Search Indexing
