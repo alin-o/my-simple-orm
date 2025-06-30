@@ -72,6 +72,11 @@ abstract class Model
     protected static $aes_fields = [];
 
     /**
+     * @var array<string> Fields to be automatically stored as json string
+     */
+    protected static $json_fields = [];
+
+    /**
      * @var array<string, mixed> Temporary data not stored in the database
      * This is useful for passing around additional data with the model object.
      * Keys will not overlap with $_data.
@@ -405,6 +410,9 @@ abstract class Model
                     return false;
                 }
                 foreach ($this->_changed as $property => $value) {
+                    if (in_array($property, static::$json_fields) && !is_string($value)) {
+                        $value = $this->_changed[$property] = json_encode($value);
+                    }
                     if (in_array($property, static::$aes_fields) && !is_array($value)) {
                         $this->_changed[$property] = ['AES' => $value];
                     }
@@ -429,6 +437,9 @@ abstract class Model
                 }
                 $this->_changed = $this->_data;
                 foreach ($this->_changed as $property => $value) {
+                    if (in_array($property, static::$json_fields) && !is_string($value)) {
+                        $value = $this->_changed[$property] = json_encode($value);
+                    }
                     if (in_array($property, static::$aes_fields) && !is_array($value)) {
                         $this->_changed[$property] = ['AES' => $value];
                     }
@@ -473,11 +484,7 @@ abstract class Model
             if (in_array($property, $this->_fields)) {
                 if ($this->_data[$property] != $value) {
                     $this->_data[$property] = $value;
-                    if (in_array($property, static::$aes_fields)) {
-                        $this->_changed[$property] = ['AES' => $value];
-                    } else {
-                        $this->_changed[$property] = $value;
-                    }
+                    $this->_changed[$property] = $value;
                 }
             } else {
                 $this->$property = $value;
@@ -556,6 +563,12 @@ abstract class Model
                     ->where(static::$idField, $this->id)
                     ->getOne(static::$table, "AES_DECRYPT(`$property`, @aes_key) as `$property`");
                 $this->_data[$property] = $d[$property];
+            }
+            if (in_array($property, static::$json_fields) && is_string($this->_data[$property])) {
+                try {
+                    $this->_data[$property] = json_decode($this->_data[$property]);
+                } catch (\Exception $ex) {
+                }
             }
             return $this->_data[$property];
         }
