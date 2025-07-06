@@ -145,8 +145,9 @@ class ModelRelationsTest extends TestCase
         ]);
         $addresses = $this->user->addresses;
         $this->assertCount(2, $addresses, 'User should have two addresses');
-        $this->assertArrayHasKey($address1->id, $addresses, 'First address should be linked');
-        $this->assertArrayHasKey($address2->id, $addresses, 'Second address should be linked');
+        $addressIds = array_map(fn($a) => $a->id, $addresses);
+        $this->assertContains($address1->id, $addressIds, 'First address should be linked');
+        $this->assertContains($address2->id, $addressIds, 'Second address should be linked');
     }
 
     public function testCanRemoveAddressFromUser(): void
@@ -167,8 +168,9 @@ class ModelRelationsTest extends TestCase
         $this->assertTrue($ok, 'Deleting address should succeed');
         $addresses = $this->user->addresses;
         $this->assertCount(1, $addresses, 'User should have one address after deletion');
-        $this->assertArrayHasKey($address1->id, $addresses, 'Remaining address should be linked');
-        $this->assertArrayNotHasKey($address2->id, $addresses, 'Deleted address should not be linked');
+        $addressIds = array_map(fn($a) => $a->id, $addresses);
+        $this->assertContains($address1->id, $addressIds, 'Remaining address should be linked');
+        $this->assertNotContains($address2->id, $addressIds, 'Deleted address should not be linked');
     }
 
     public function testCanUnsetShippingAddress(): void
@@ -238,8 +240,9 @@ class ModelRelationsTest extends TestCase
         $this->user->roles = [$role1->id, $role2->id];
         $roles = $this->user->roles;
         $this->assertCount(2, $roles, 'User should have two roles');
-        $this->assertArrayHasKey($role1->id, $roles, 'Role1 should be assigned');
-        $this->assertArrayHasKey($role2->id, $roles, 'Role2 should be assigned');
+        $roleIds = array_map(fn($r) => $r->id, $roles);
+        $this->assertContains($role1->id, $roleIds, 'Role1 should be assigned');
+        $this->assertContains($role2->id, $roleIds, 'Role2 should be assigned');
         $role1->delete();
         $role2->delete();
     }
@@ -258,8 +261,9 @@ class ModelRelationsTest extends TestCase
         $user2->roles = [$role->id];
         $users = $role->users;
         $this->assertCount(2, $users, 'Role should have two users');
-        $this->assertArrayHasKey($this->user->id, $users, 'User1 should be assigned');
-        $this->assertArrayHasKey($user2->id, $users, 'User2 should be assigned');
+        $userIds = array_map(fn($u) => $u->id, $users);
+        $this->assertContains($this->user->id, $userIds, 'User1 should be assigned');
+        $this->assertContains($user2->id, $userIds, 'User2 should be assigned');
         User::db()->where('user_id', $user2->id)->delete('user_roles');
         $user2->delete();
         $role->delete();

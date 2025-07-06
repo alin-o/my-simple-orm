@@ -374,7 +374,7 @@ class ModelTest extends TestCase
             ->willReturnSelf();
         $mockAddressDb->expects($this->once())
             ->method('getOne')
-            ->with(Address::getTable(), $this->stringContains('`id`')) // Check table and that 'id' is selected
+            ->with(Address::getTable(), '`id`') // Expecting '`id`' for selectString
             ->willReturn(['id' => 123]); // Simulate Address found with ID 123
 
         // Temporarily set the connection for the Address model to use our mock

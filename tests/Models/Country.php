@@ -20,6 +20,6 @@ class Country extends Model
         // A Country has many Posts through Users.
         // $relatedClass, $throughClass, $firstForeignKey (on throughClass), $secondForeignKey (on relatedClass),
         // $localKey (on this model), $throughKey (on throughClass)
-        return $this->hasManyThrough(Post::class, User::class, 'country_id', 'user_id', 'id', 'id');
+        return $this->hasManyThrough(Post::class, User::class, 'country_id', 'user_id', 'id', 'id', false);
     }
 }

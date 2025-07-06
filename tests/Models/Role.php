@@ -13,7 +13,7 @@ class Role extends Model
     ];
 
     // Eloquent-style relationship method for testing
-    public function usersEloquent()
+    public function eloquentUsers()
     {
         return $this->belongsToMany(User::class, 'user_roles', 'role_id', 'user_id');
     }

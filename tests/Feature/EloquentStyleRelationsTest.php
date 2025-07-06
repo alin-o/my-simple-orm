@@ -82,12 +82,12 @@ class EloquentStyleRelationsTest extends TestCase
         static::addCreatedModel($address);
 
         // Test User->country()
-        $userCountry = $user->country();
+        $userCountry = $user->country;
         $this->assertInstanceOf(Country::class, $userCountry);
         $this->assertEquals($country->id(), $userCountry->id());
 
         // Test Address->userEloquent()
-        $addressUser = $address->userEloquent();
+        $addressUser = $address->userEloquent;
         $this->assertInstanceOf(User::class, $addressUser);
         $this->assertEquals($user->id(), $addressUser->id());
     }
@@ -108,8 +108,8 @@ class EloquentStyleRelationsTest extends TestCase
         $this->assertNotNull($profile, 'UserProfile should be created');
         static::addCreatedModel($profile);
 
-        // Test User->profile()
-        $userProfile = $user->profile();
+        // Test User->profile() via magic __get
+        $userProfile = $user->profile;
         $this->assertInstanceOf(UserProfile::class, $userProfile);
         $this->assertEquals($profile->id(), $userProfile->id());
         $this->assertEquals('This is a test bio.', $userProfile->bio);
@@ -130,7 +130,7 @@ class EloquentStyleRelationsTest extends TestCase
         static::addCreatedModel($post2);
 
         // Test User->posts()
-        $posts = $user->posts();
+        $posts = $user->posts;
         $this->assertCount(2, $posts);
         $this->assertInstanceOf(Post::class, $posts[0]);
         $this->assertContains($posts[0]->title, ['Post 1 by User', 'Post 2 by User']);
@@ -155,7 +155,7 @@ class EloquentStyleRelationsTest extends TestCase
         $user->roles = [$roleAdmin->id(), $roleEditor->id()]; // Uses existing static $relations logic for setup
 
         // Test User->eloquent_roles()
-        $userRoles = $user->eloquent_roles();
+        $userRoles = $user->eloquent_roles;
         $this->assertCount(2, $userRoles);
         $this->assertInstanceOf(Role::class, $userRoles[0]);
         $roleNames = array_map(fn($r) => $r->name, $userRoles);
@@ -163,7 +163,7 @@ class EloquentStyleRelationsTest extends TestCase
         $this->assertContains($roleEditor->name, $roleNames);
 
         // Test Role->usersEloquent()
-        $adminUsers = $roleAdmin->usersEloquent();
+        $adminUsers = $roleAdmin->eloquentUsers;
         $this->assertCount(1, $adminUsers);
         $this->assertInstanceOf(User::class, $adminUsers[0]);
         $this->assertEquals($user->id(), $adminUsers[0]->id());
@@ -205,8 +205,8 @@ class EloquentStyleRelationsTest extends TestCase
         static::addCreatedModel($post2);
         static::addCreatedModel($post3);
 
-        // Test Country->posts()
-        $countryPosts = $country->posts();
+        // Test Country->posts() via magic __get
+        $countryPosts = $country->posts;
         $this->assertCount(2, $countryPosts, "Country should have 2 posts through its users.");
         $this->assertInstanceOf(Post::class, $countryPosts[0]);
 

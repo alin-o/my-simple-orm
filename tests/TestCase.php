@@ -43,6 +43,13 @@ abstract class TestCase extends \PHPUnit\Framework\TestCase
         if (!empty($aes)) {
             $db->rawQuery("SET @aes_key = SHA2('$aes', 512)");
         }
+        // Create countries table
+            $db->rawQuery("CREATE TABLE IF NOT EXISTS `countries` (
+                `id` int(11) NOT NULL AUTO_INCREMENT,
+                `name` varchar(100) NOT NULL,
+                PRIMARY KEY (`id`)
+            )");
+
         try {
             $db->has('user_roles');
         } catch (\Exception $e) {
@@ -129,29 +136,23 @@ abstract class TestCase extends \PHPUnit\Framework\TestCase
             )");
 
             // Add constraints for addresses
-            // Ensure countries table exists before this.
-            $db->rawQuery("ALTER TABLE `addresses`
-                ADD CONSTRAINT `fk_addresses_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-                ADD CONSTRAINT `fk_addresses_country` FOREIGN KEY (`country_id`) REFERENCES `countries` (`id`) ON DELETE SET NULL;");
+            $db->rawQuery("ALTER TABLE `addresses` ADD CONSTRAINT `fk_addresses_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;");
+            $db->rawQuery("ALTER TABLE `addresses` ADD CONSTRAINT `fk_addresses_country` FOREIGN KEY (`country_id`) REFERENCES `countries` (`id`) ON DELETE SET NULL;");
 
             // Add constraints for users
-            $db->rawQuery("ALTER TABLE `users`
-                ADD CONSTRAINT `fk_users_shipping_address` FOREIGN KEY (`shipping_address`) REFERENCES `addresses` (`id`) ON DELETE SET NULL,
-                ADD CONSTRAINT `fk_users_billing_address` FOREIGN KEY (`billing_address`) REFERENCES `addresses` (`id`) ON DELETE SET NULL,
-                ADD CONSTRAINT `fk_users_country` FOREIGN KEY (`country_id`) REFERENCES `countries` (`id`) ON DELETE SET NULL;");
+            $db->rawQuery("ALTER TABLE `users` ADD CONSTRAINT `fk_users_shipping_address` FOREIGN KEY (`shipping_address`) REFERENCES `addresses` (`id`) ON DELETE SET NULL;");
+            $db->rawQuery("ALTER TABLE `users` ADD CONSTRAINT `fk_users_billing_address` FOREIGN KEY (`billing_address`) REFERENCES `addresses` (`id`) ON DELETE SET NULL;");
+            $db->rawQuery("ALTER TABLE `users` ADD CONSTRAINT `fk_users_country` FOREIGN KEY (`country_id`) REFERENCES `countries` (`id`) ON DELETE SET NULL;");
 
             // Add constraints for posts
-            $db->rawQuery("ALTER TABLE `posts`
-                ADD CONSTRAINT `fk_posts_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;");
+            $db->rawQuery("ALTER TABLE `posts` ADD CONSTRAINT `fk_posts_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;");
 
             // Add constraints for user_profiles
-            $db->rawQuery("ALTER TABLE `user_profiles`
-                ADD CONSTRAINT `fk_user_profiles_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;");
+            $db->rawQuery("ALTER TABLE `user_profiles` ADD CONSTRAINT `fk_user_profiles_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;");
 
             // Add constraints for user_roles
-            $db->rawQuery("ALTER TABLE `user_roles`
-                ADD CONSTRAINT `fk_user_roles_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE,
-                ADD CONSTRAINT `fk_user_roles_role` FOREIGN KEY (`role_id`) REFERENCES `roles` (`id`) ON DELETE CASCADE;");
+            $db->rawQuery("ALTER TABLE `user_roles` ADD CONSTRAINT `fk_user_roles_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE;");
+            $db->rawQuery("ALTER TABLE `user_roles` ADD CONSTRAINT `fk_user_roles_role` FOREIGN KEY (`role_id`) REFERENCES `roles` (`id`) ON DELETE CASCADE;");
 
             // Seed a country if it doesn't exist
             $db->rawQuery("INSERT IGNORE INTO `countries` (`id`, `name`) VALUES (1, 'Default Country')");
