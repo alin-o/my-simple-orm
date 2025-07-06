@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "613ec323b45da880645b17a2f109ba4e",
+    "content-hash": "b07ff2c0a2e33e37e1fc770d44e88e40",
     "packages": [
         {
             "name": "alin-o/mysqli-database-class",

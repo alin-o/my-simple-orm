@@ -191,7 +191,7 @@ class ModelRelationsTest extends TestCase
 
     public function testCannotCreateAddressWithInvalidUserId(): void
     {
-        $this->expectException(DbException::class);
+        $this->expectException(\mysqli_sql_exception::class);
         Address::create([
             'user_id' => 'invalid-id',
             'fname' => 'Test',
@@ -211,7 +211,7 @@ class ModelRelationsTest extends TestCase
             'status' => 0
         ]);
         $this->assertNotNull($user1, 'First user creation should succeed');
-        $this->expectException(DbException::class);
+        $this->expectException(\mysqli_sql_exception::class);
         User::create([
             'username' => 'user2_' . uniqid(),
             'email' => $email,

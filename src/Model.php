@@ -460,13 +460,9 @@ abstract class Model
                 }
             }
             $ex = new DbException(static::db()->getLastError());
-            static::db()->resetQuery();
             throw $ex;
-        } catch (\Exception $e) {
-            // Handle other exceptions
-            $ex = new DbException($e->getMessage());
+        } finally {
             static::db()->resetQuery();
-            throw $ex;
         }
     }
 
@@ -1252,14 +1248,15 @@ abstract class Model
     /**
      * Sets up a query for models owned by a specific object (BELONGS_TO).
      *
-     * @param object $owner The owning model instance
+     * @param Model $owner The owning model instance
      * @return string The class name for chaining
      */
-    public static function of(object $owner)
+    public static function of(Model $owner)
     {
         foreach (static::$relations as $relation) {
             if ($relation[0] == static::BELONGS_TO && is_a($owner, $relation[1])) {
-                static::db()->where($relation[2], $owner->id);
+                static::where($relation[2], $owner->id);
+                return get_called_class();
             }
         }
         return get_called_class();
