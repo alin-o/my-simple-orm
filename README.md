@@ -1,4 +1,4 @@
-# MyOrm
+"""# MyOrm
 ## A Simple ORM for MySQL and MariaDB
 
 AlinO\MyOrm is a lightweight Object-Relational Mapping (ORM) library for PHP 7.4 and above. It simplifies database interactions with MySQL and MariaDB while offering powerful features such as relationship management, lifecycle hooks, AES encryption, and utility methods for modern web applications.
@@ -8,8 +8,10 @@ AlinO\MyOrm is a lightweight Object-Relational Mapping (ORM) library for PHP 7.4
 * Automatic Table Detection: Derives table names from class names if not explicitly set.
 * Flexible Database Connections: Supports multiple database connections per model.
 * Lifecycle Hooks: Provides hooks like `beforeCreate`, `afterCreate`, etc., for custom logic.
-* Relationships: Supports `BELONGS_TO`, `HAS_ONE`, `HAS_MANY` and `HAS_MANY_THROUGH`.
+* Relationships: Supports `BELONGS_TO`, `HAS_ONE`, `HAS_MANY`, `HAS_MANY_THROUGH` and `BELONGS_TO_MANY`.
+* Eloquent-Style Relationships: Define relationships using expressive, chainable methods (`hasOne`, `hasMany`, `belongsTo`, `belongsToMany`).
 * AES Encryption: Automatically encrypts/decrypts specified fields on the current model instance.
+* JSON Field Casting: Automatically encode and decode attributes to and from JSON.
 * Search Indexing: Updates search indexes based on defined fields.
 * Utility Methods: `assureUnique`, `list`, `toArray`, etc.
 * Efficient Related Data Retrieval: Methods like `getRelatedColumns` and `getRelatedIds` for fetching specific related data without full model hydration.
@@ -59,6 +61,8 @@ class User extends \AlinO\MyOrm\Model {
     protected static $emptyFields = ['status'];      // Fields initialized to 0
     protected static $extraFields = ['temp_data'];   // Non-persisted fields
     protected static $aes_fields = ['email'];        // Fields to encrypt
+    protected static $json_fields = ['settings'];    // Fields to cast to/from JSON
+    protected static $listSorting = ['username', 'ASC']; // Default sorting for list()
     protected static $relations = [                  // Relationships
         'addresses' => [Model::HAS_MANY, Address::class, 'user_id'],
         'profile' => [Model::HAS_ONE, Profile::class, 'user_id'],
@@ -197,6 +201,97 @@ $roles = $user->roles; // Returns an array of Role instances
 foreach ($roles as $role) {
     echo $role->name;
 }
+```
+
+#### BELONGS_TO_MANY
+
+For many-to-many relationships (functionally identical to `HAS_MANY_THROUGH`):
+
+```php
+class Role extends \AlinO\MyOrm\Model {
+    protected static $relations = [
+        'users' => [Model::BELONGS_TO_MANY, User::class, 'user_id', 'user_roles', 'role_id'],
+    ];
+}
+
+$users = $role->users; // Returns an array of User instances
+foreach ($users as $user) {
+    echo $user->username;
+}
+```
+
+### Eloquent-Style Relationships
+
+In addition to the `$relations` array, you can define relationships as methods on your model for a more expressive and flexible approach. This allows for lazy loading of related models.
+
+#### hasOne
+
+Define a one-to-one relationship.
+
+```php
+class User extends \AlinO\MyOrm\Model {
+    public function profile() {
+        return $this->hasOne(Profile::class, 'user_id');
+    }
+}
+
+$profile = $user->profile(); // Returns the Profile instance
+```
+
+#### hasMany
+
+Define a one-to-many relationship.
+
+```php
+class User extends \AlinO\MyOrm\Model {
+    public function posts() {
+        return $this->hasMany(Post::class, 'user_id');
+    }
+}
+
+$posts = $user->posts(); // Returns an array of Post instances
+```
+
+#### belongsTo
+
+Define the inverse of a one-to-one or one-to-many relationship.
+
+```php
+class Post extends \AlinO\MyOrm\Model {
+    public function user() {
+        return $this->belongsTo(User::class, 'user_id');
+    }
+}
+
+$user = $post->user(); // Returns the User instance
+```
+
+#### belongsToMany
+
+Define a many-to-many relationship.
+
+```php
+class User extends \AlinO\MyOrm\Model {
+    public function roles() {
+        return $this->belongsToMany(Role::class, 'user_roles', 'user_id', 'role_id');
+    }
+}
+
+$roles = $user->roles(); // Returns an array of Role instances
+```
+
+#### hasManyThrough
+
+Define a "has-many-through" relationship.
+
+```php
+class Project extends \AlinO\MyOrm\Model {
+    public function deployments() {
+        return $this->hasManyThrough(Deployment::class, Environment::class, 'project_id', 'environment_id');
+    }
+}
+
+$deployments = $project->deployments(); // Returns an array of Deployment instances
 ```
 
 ### Advanced Querying
@@ -369,6 +464,28 @@ if ($existingId) {
 }
 ```
 
+#### of: Scope a query to only include models belonging to a specific owner.
+
+```php
+// Get all posts for a specific user
+$posts = Post::of($user)->get();
+```
+
+#### load: Load a model instance by class name and ID.
+
+```php
+$user = Model::load('User', 1);
+// or
+$user = Model::load(\App\Models\User::class, 1);
+```
+
+#### getChanges: Get an array of the model's changed attributes.
+
+```php
+$user->username = 'new-username';
+$changes = $user->getChanges(); // ['username' => 'new-username']
+```
+
 ### Database errors are thrown as DbException:
 ```php
 try {
@@ -393,3 +510,4 @@ then run `phpunit`
 ## Contributing
 
 Contributions are welcome! Fork the repository on GitHub and submit a pull request. For bug reports or feature requests, please open an issue.
+""

@@ -640,6 +640,14 @@ abstract class Model
      */
     public function __call($name, $arguments)
     {
+        // Eloquent-style query builder access
+        if (str_ends_with($name, 'Query')) {
+            $relationName = substr($name, 0, -5);
+            if (method_exists($this, $relationName)) {
+                return $this->$relationName(true);
+            }
+        }
+
         if (preg_match('/^from(.+)/', $name, $matches)) {
             if (count($arguments) != 1) {
                 throw new Exception("Method $name accepts 1 parameter");
@@ -938,33 +946,28 @@ abstract class Model
             return null;
         }
         list($type, $class, $fk) = $r;
+
         switch ($type) {
             case Model::BELONGS_TO:
             case Model::HAS_ONE:
                 return $class::find($this->$fk);
 
             case Model::HAS_MANY:
-                $cid = $class::getIdField();
-                $ids = $class::db()->where($fk, $this->id)
-                    ->get($class::getTable(), null, $cid);
-                $ret = [];
-                foreach ($ids as $i) {
-                    $ret[$i[$cid]] = $class::find($i[$cid]);
-                }
-                return $ret;
+                $relatedItems = $class::db()->where($fk, $this->id)->get($class::getTable());
+                return array_map(fn($data) => new $class($data), $relatedItems);
 
             case Model::BELONGS_TO_MANY: // Fall through to HAS_MANY_THROUGH logic
             case Model::HAS_MANY_THROUGH:
-                $cid = $class::getIdField();
-                $join = $r[3];
-                $jfk = $r[4];
-                $ids = static::db()->where($jfk, $this->id)
-                    ->get($join, null, $fk);
-                $ret = [];
-                foreach ($ids as $i) {
-                    $ret[$i[$fk]] = $class::find($i[$fk]);
+                $joinTable = $r[3];
+                $relatedFk = $r[4];
+
+                $relatedIds = static::db()->where($relatedFk, $this->id)->get($joinTable, null, $fk);
+                if (empty($relatedIds)) {
+                    return [];
                 }
-                return $ret;
+                $ids = array_column($relatedIds, $fk);
+                $relatedItems = $class::findAll($ids);
+                return array_values($relatedItems);
         }
         return null;
     }
@@ -1221,11 +1224,79 @@ abstract class Model
         $this->_withRelated = []; // Reset if called multiple times, or append based on desired behavior
         foreach ($related as $relString) {
             list($relName) = explode(':', $relString, 2);
-            if (!empty(static::$relations[$relName])) {
+            if (!empty(static::$relations[$relName]) || method_exists($this, $relName)) {
                 $this->_withRelated[] = $relString; // Store the full string 'relationName:column1,column2'
             }
         }
+        // After loading, we can immediately process them to populate the cache
+        $this->loadEagerRelations();
         return $this;
+    }
+
+    /**
+     * Eager loads relationships for a collection of models.
+     *
+     * @param array<Model> $models The models to eager load relationships for.
+     * @param array<string> $relations The relations to eager load.
+     * @return void
+     */
+    public static function eagerLoad(array $models, array $relations): void
+    {
+        if (empty($models) || empty($relations)) {
+            return;
+        }
+
+        foreach ($relations as $relationName) {
+            $relation = static::$relations[$relationName] ?? null;
+            if (!$relation) continue;
+
+            list($type, $relatedClass, $foreignKey) = $relation;
+
+            switch ($type) {
+                case self::BELONGS_TO:
+                    $foreignKeyValues = array_filter(array_map(fn($m) => $m->$foreignKey, $models));
+                    if (empty($foreignKeyValues)) continue 2;
+
+                    $relatedModels = $relatedClass::findAll(array_unique($foreignKeyValues), $relatedClass::getIdField());
+                    $relatedModelsById = [];
+                    foreach ($relatedModels as $relatedModel) {
+                        $relatedModelsById[$relatedModel->getId()] = $relatedModel;
+                    }
+
+                    foreach ($models as $model) {
+                        $model->setRelation($relationName, $relatedModelsById[$model->$foreignKey] ?? null);
+                    }
+                    break;
+
+                case self::HAS_MANY:
+                    $modelIds = array_map(fn($m) => $m->id, $models);
+                    $relatedModels = $relatedClass::db()->where($foreignKey, $modelIds, 'IN')->get($relatedClass::getTable());
+
+                    $relatedModelsByFk = [];
+                    foreach ($relatedModels as $relatedData) {
+                        $relatedModelsByFk[$relatedData[$foreignKey]][] = new $relatedClass($relatedData);
+                    }
+
+                    foreach ($models as $model) {
+                        $model->setRelation($relationName, $relatedModelsByFk[$model->id] ?? []);
+                    }
+                    break;
+            }
+        }
+    }
+
+    /**
+     * Loads the relations specified in _withRelated into the relatedCache.
+     *
+     * @return void
+     */
+    protected function loadEagerRelations(): void
+    {
+        foreach ($this->_withRelated as $relationName) {
+            if (!array_key_exists($relationName, $this->relatedCache)) {
+                $this->getRelated($relationName);
+            }
+        }
     }
 
     /**
@@ -1253,6 +1324,18 @@ abstract class Model
     }
 
     /**
+     * Sets a value in the relationship cache.
+     *
+     * @param string $relation The name of the relation.
+     * @param mixed $value The value to cache.
+     * @return void
+     */
+    public function setRelation(string $relation, $value): void
+    {
+        $this->relatedCache[$relation] = $value;
+    }
+
+    /**
      * Define an inverse one-to-one or many-to-one relationship.
      *
      * @param string $relatedClass The fully qualified class name of the related model.
@@ -1261,23 +1344,14 @@ abstract class Model
      * @return ?Model An instance of the related model or null if not found.
      * @throws Exception If the related class does not exist or current model not saved.
      */
-    public function belongsTo(string $relatedClass, string $foreignKey, ?string $ownerKey = null): ?Model
+    public function belongsTo(string $relatedClass, string $foreignKey, ?string $ownerKey = null, bool $getQueryBuilder = false): mixed
     {
-        if (!class_exists($relatedClass)) {
-            throw new Exception("Related class {$relatedClass} not found.");
+        $query = $this->belongsToQuery($relatedClass, $foreignKey, $ownerKey);
+        if ($getQueryBuilder) {
+            return $query;
         }
-
-        $foreignKeyValue = $this->{$foreignKey} ?? null;
-
-        if ($foreignKeyValue === null) {
-            return null; // Foreign key not set or null, so no related model.
-        }
-
-        $actualOwnerKey = $ownerKey ?: $relatedClass::getIdField();
-
-        // Use the related model's find method, which handles its own table and ID field.
-        // $relatedClass::find($valueToSearch, $columnToSearchIn)
-        return $relatedClass::find($foreignKeyValue, $actualOwnerKey);
+        $data = $query->getOne($relatedClass::getTable());
+        return $data ? new $relatedClass($data) : null;
     }
 
     /**
@@ -1286,26 +1360,17 @@ abstract class Model
      * @param string $relatedClass The fully qualified class name of the related model.
      * @param string $foreignKey The foreign key on the related model's table.
      * @param string|null $localKey The local key on the current model's table. Defaults to current model's ID field.
-     * @return ?Model An instance of the related model or null if not found.
+     * @param bool $getQueryBuilder If true, returns the query builder instead of the result.
+     * @return Model|MysqliDb|null An instance of the related model, the query builder, or null if not found.
      * @throws Exception If the related class does not exist or current model not saved.
      */
-    public function hasOne(string $relatedClass, string $foreignKey, ?string $localKey = null): ?Model
+    public function hasOne(string $relatedClass, string $foreignKey, ?string $localKey = null, bool $getQueryBuilder = false): mixed
     {
-        if (!class_exists($relatedClass)) {
-            throw new Exception("Related class {$relatedClass} not found.");
+        $query = $this->hasOneQuery($relatedClass, $foreignKey, $localKey);
+        if ($getQueryBuilder) {
+            return $query;
         }
-
-        $actualLocalKey = $localKey ?: static::getIdField();
-        $localKeyValue = $this->{$actualLocalKey} ?? null;
-
-        if ($localKeyValue === null) {
-            // Current model's local key is not set (e.g., model not saved or key is null)
-            return null;
-        }
-
-        // Query the related table
-        $data = $relatedClass::db()->where($foreignKey, $localKeyValue)->getOne($relatedClass::getTable());
-
+        $data = $query->getOne($relatedClass::getTable());
         return $data ? new $relatedClass($data) : null;
     }
 
@@ -1315,25 +1380,17 @@ abstract class Model
      * @param string $relatedClass The fully qualified class name of the related model.
      * @param string $foreignKey The foreign key on the related model's table.
      * @param string|null $localKey The local key on the current model's table. Defaults to current model's ID field.
-     * @return array An array of related model instances.
+     * @param bool $getQueryBuilder If true, returns the query builder instead of the result.
+     * @return array|MysqliDb An array of related model instances or the query builder.
      * @throws Exception If the related class does not exist or current model not saved.
      */
-    public function hasMany(string $relatedClass, string $foreignKey, ?string $localKey = null): array
+    public function hasMany(string $relatedClass, string $foreignKey, ?string $localKey = null, bool $getQueryBuilder = false): mixed
     {
-        if (!class_exists($relatedClass)) {
-            throw new Exception("Related class {$relatedClass} not found.");
+        $query = $this->hasManyQuery($relatedClass, $foreignKey, $localKey);
+        if ($getQueryBuilder) {
+            return $query;
         }
-
-        $actualLocalKey = $localKey ?: static::getIdField();
-        $localKeyValue = $this->{$actualLocalKey} ?? null;
-
-        if ($localKeyValue === null) {
-            // Current model's local key is not set
-            return [];
-        }
-
-        $results = $relatedClass::db()->where($foreignKey, $localKeyValue)->get($relatedClass::getTable());
-
+        $results = $query->get($relatedClass::getTable());
         return array_map(fn($data) => new $relatedClass($data), $results);
     }
 
@@ -1355,38 +1412,14 @@ abstract class Model
         string $firstForeignKey,
         string $secondForeignKey,
         ?string $localKey = null,
-        ?string $throughKey = null
-    ): array {
-        if (!class_exists($relatedClass)) {
-            throw new Exception("Related class {$relatedClass} not found.");
+        ?string $throughKey = null,
+        bool $getQueryBuilder = false
+    ): mixed {
+        $query = $this->hasManyThroughQuery($relatedClass, $throughClass, $firstForeignKey, $secondForeignKey, $localKey, $throughKey);
+        if ($getQueryBuilder) {
+            return $query;
         }
-        if (!class_exists($throughClass)) {
-            throw new Exception("Through class {$throughClass} not found.");
-        }
-
-        $actualLocalKey = $localKey ?: static::getIdField();
-        $currentModelId = $this->{$actualLocalKey} ?? null;
-
-        if ($currentModelId === null) {
-            return [];
-        }
-
-        $actualThroughKey = $throughKey ?: $throughClass::getIdField();
-
-        // 1. Get IDs from the intermediate ($throughClass) table
-        $intermediateRows = $throughClass::db()
-            ->where($firstForeignKey, $currentModelId)
-            ->get($throughClass::getTable(), null, $actualThroughKey);
-
-        if (empty($intermediateRows)) return [];
-        $intermediateModelIds = array_map(fn($row) => $row[$actualThroughKey], $intermediateRows);
-        if (empty($intermediateModelIds)) return [];
-
-        // 2. Get related ($relatedClass) models using these intermediate IDs
-        $results = $relatedClass::db()
-            ->where($secondForeignKey, $intermediateModelIds, 'IN')
-            ->get($relatedClass::getTable());
-
+        $results = $query->get($relatedClass::getTable());
         return array_map(fn($data) => new $relatedClass($data), $results);
     }
 
@@ -1398,48 +1431,108 @@ abstract class Model
      * @param string $pivotTable The name of the intermediate pivot table.
      * @param string $foreignPivotKey The foreign key on the pivot table that references the current model's ID.
      * @param string $relatedPivotKey The foreign key on the pivot table that references the related model's ID.
-     * @return array An array of related model instances.
+     * @param bool $getQueryBuilder If true, returns the query builder instead of the result.
+     * @return array|MysqliDb An array of related model instances or the query builder.
      * @throws Exception If the related class does not exist or if the current model is not saved.
      */
     public function belongsToMany(
         string $relatedClass,
         string $pivotTable,
         string $foreignPivotKey,
-        string $relatedPivotKey
-    ): array {
+        string $relatedPivotKey,
+        bool $getQueryBuilder = false
+    ): mixed {
+        $query = $this->belongsToManyQuery($relatedClass, $pivotTable, $foreignPivotKey, $relatedPivotKey);
+        if ($getQueryBuilder) {
+            return $query;
+        }
+        $results = $query->get($relatedClass::getTable());
+        return array_map(fn($data) => new $relatedClass($data), $results);
+    }
+
+    /**
+     * Returns the query builder for a hasOne relationship.
+     *
+     * @param string $relatedClass
+     * @param string $foreignKey
+     * @param string|null $localKey
+     * @return MysqliDb
+     * @throws Exception
+     */
+    public function hasOneQuery(string $relatedClass, string $foreignKey, ?string $localKey = null): MysqliDb
+    {
+        if (!class_exists($relatedClass)) {
+            throw new Exception("Related class {$relatedClass} not found.");
+        }
+        $actualLocalKey = $localKey ?: static::getIdField();
+        $localKeyValue = $this->{$actualLocalKey} ?? null;
+
+        return $relatedClass::db()->where($foreignKey, $localKeyValue);
+    }
+
+    /**
+     * Returns the query builder for a hasMany relationship.
+     *
+     * @param string $relatedClass
+     * @param string $foreignKey
+     * @param string|null $localKey
+     * @return MysqliDb
+     * @throws Exception
+     */
+    public function hasManyQuery(string $relatedClass, string $foreignKey, ?string $localKey = null): MysqliDb
+    {
+        if (!class_exists($relatedClass)) {
+            throw new Exception("Related class {$relatedClass} not found.");
+        }
+        $actualLocalKey = $localKey ?: static::getIdField();
+        $localKeyValue = $this->{$actualLocalKey} ?? null;
+
+        return $relatedClass::db()->where($foreignKey, $localKeyValue);
+    }
+
+    /**
+     * Returns the query builder for a belongsTo relationship.
+     *
+     * @param string $relatedClass
+     * @param string $foreignKey
+     * @param string|null $ownerKey
+     * @return MysqliDb
+     * @throws Exception
+     */
+    public function belongsToQuery(string $relatedClass, string $foreignKey, ?string $ownerKey = null): MysqliDb
+    {
+        if (!class_exists($relatedClass)) {
+            throw new Exception("Related class {$relatedClass} not found.");
+        }
+        $foreignKeyValue = $this->{$foreignKey} ?? null;
+        $actualOwnerKey = $ownerKey ?: $relatedClass::getIdField();
+
+        return $relatedClass::db()->where($actualOwnerKey, $foreignKeyValue);
+    }
+
+    /**
+     * Returns the query builder for a belongsToMany relationship.
+     *
+     * @param string $relatedClass
+     * @param string $pivotTable
+     * @param string $foreignPivotKey
+     * @param string $relatedPivotKey
+     * @return MysqliDb
+     * @throws Exception
+     */
+    public function belongsToManyQuery(string $relatedClass, string $pivotTable, string $foreignPivotKey, string $relatedPivotKey): MysqliDb
+    {
         if (!class_exists($relatedClass)) {
             throw new Exception("Related class {$relatedClass} not found.");
         }
 
         $currentModelId = $this->id();
-        if ($currentModelId === null) {
-            // Cannot fetch relations for a model that hasn't been saved or doesn't have an ID
-            return [];
-        }
-
-        // Use the current model's database connection.
-        // This assumes the pivot table is in the same database as the current model.
-        $db = static::db();
-
-        // Fetch the IDs/keys of the related models from the pivot table.
-        // SQL: SELECT $relatedPivotKey FROM $pivotTable WHERE $foreignPivotKey = $currentModelId
-        $relatedKeyValuesInPivot = $db
+        $relatedKeyValuesInPivot = static::db()
             ->where($foreignPivotKey, $currentModelId)
             ->get($pivotTable, null, $relatedPivotKey);
 
-        if (empty($relatedKeyValuesInPivot)) {
-            return [];
-        }
-
         $relatedModelIds = array_map(fn($row) => $row[$relatedPivotKey], $relatedKeyValuesInPivot);
 
-        if (empty($relatedModelIds)) {
-            return [];
-        }
-
-        // Fetch the actual related model instances using their primary keys.
-        // $relatedClass::findAll() uses the related model's ID field and database connection.
-        $instances = $relatedClass::findAll($relatedModelIds); // Returns an array keyed by ID
-        return array_values($instances); // Return a simple numerically indexed array
+        return $relatedClass::db()->where($relatedClass::getIdField(), $relatedModelIds, 'IN');
     }
 }
