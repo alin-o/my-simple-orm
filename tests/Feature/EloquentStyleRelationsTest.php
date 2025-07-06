@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use AlinO\Db\MysqliDb;
 use Tests\Models\Address;
 use Tests\Models\User;
 use Tests\Models\Role;
@@ -90,6 +91,13 @@ class EloquentStyleRelationsTest extends TestCase
         $addressUser = $address->userEloquent;
         $this->assertInstanceOf(User::class, $addressUser);
         $this->assertEquals($user->id(), $addressUser->id());
+
+        $query = $address->userEloquent();
+        $this->assertInstanceOf(MysqliDb::class, $query);
+
+        $addressUser = $query->first();
+        $this->assertInstanceOf(User::class, $addressUser);
+        $this->assertEquals($user->id(), $addressUser->id());
     }
 
     public function testHasOneRelation()
@@ -113,6 +121,14 @@ class EloquentStyleRelationsTest extends TestCase
         $this->assertInstanceOf(UserProfile::class, $userProfile);
         $this->assertEquals($profile->id(), $userProfile->id());
         $this->assertEquals('This is a test bio.', $userProfile->bio);
+
+        $query = $user->profile();
+        $this->assertInstanceOf(MysqliDb::class, $query);
+
+        $userProfile = $query->first();
+        $this->assertInstanceOf(UserProfile::class, $userProfile);
+        $this->assertEquals($profile->id(), $userProfile->id());
+        $this->assertEquals('This is a test bio.', $userProfile->bio);
     }
 
     public function testHasManyRelation()
@@ -131,6 +147,14 @@ class EloquentStyleRelationsTest extends TestCase
 
         // Test User->posts()
         $posts = $user->posts;
+        $this->assertCount(2, $posts);
+        $this->assertInstanceOf(Post::class, $posts[0]);
+        $this->assertContains($posts[0]->title, ['Post 1 by User', 'Post 2 by User']);
+
+        $query = $user->posts();
+        $this->assertInstanceOf(MysqliDb::class, $query);
+
+        $posts = $query->all();
         $this->assertCount(2, $posts);
         $this->assertInstanceOf(Post::class, $posts[0]);
         $this->assertContains($posts[0]->title, ['Post 1 by User', 'Post 2 by User']);
@@ -164,6 +188,14 @@ class EloquentStyleRelationsTest extends TestCase
 
         // Test Role->usersEloquent()
         $adminUsers = $roleAdmin->eloquentUsers;
+        $this->assertCount(1, $adminUsers);
+        $this->assertInstanceOf(User::class, $adminUsers[0]);
+        $this->assertEquals($user->id(), $adminUsers[0]->id());
+
+        $query = $roleAdmin->eloquentUsers();
+        $this->assertInstanceOf(MysqliDb::class, $query);
+
+        $adminUsers = $query->all();
         $this->assertCount(1, $adminUsers);
         $this->assertInstanceOf(User::class, $adminUsers[0]);
         $this->assertEquals($user->id(), $adminUsers[0]->id());
@@ -214,6 +246,13 @@ class EloquentStyleRelationsTest extends TestCase
         $this->assertContains($post1->title, $postTitles);
         $this->assertContains($post2->title, $postTitles);
         $this->assertNotContains($post3->title, $postTitles);
+
+        $query = $country->posts();
+        $this->assertInstanceOf(MysqliDb::class, $query);
+
+        $countryPosts = $query->all();
+        $this->assertCount(2, $countryPosts, "Country should have 2 posts through its users.");
+        $this->assertInstanceOf(Post::class, $countryPosts[0]);
     }
 
     public function testMagicGetLoadsEloquentRelation()

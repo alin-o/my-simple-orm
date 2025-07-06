@@ -374,7 +374,7 @@ class ModelTest extends TestCase
             ->willReturnSelf();
         $mockAddressDb->expects($this->once())
             ->method('getOne')
-            ->with(Address::getTable(), '`id`') // Expecting '`id`' for selectString
+            ->with(Address::getTable(), Address::getSelect()) // Expecting null for selectString when '*' is requested
             ->willReturn(['id' => 123]); // Simulate Address found with ID 123
 
         // Temporarily set the connection for the Address model to use our mock
@@ -386,7 +386,7 @@ class ModelTest extends TestCase
         Address::setConnection($originalAddressConn); // Restore original connection for Address
 
         $this->assertArrayHasKey('saddress', $arrayWithRelation, "toArray with 'with' for HAS_ONE should include relation key.");
-        $this->assertEquals([['id' => 123]], $arrayWithRelation['saddress'], "saddress value in toArray with 'with' should be an array containing an associative array with the ID.");
+        $this->assertEquals(['id' => 123], $arrayWithRelation['saddress'], "saddress value in toArray with 'with' should be an associative array with the ID.");
 
         // For HAS_MANY_THROUGH like 'roles', getRelatedIds usually hits the DB.
         $userForRolesTest = User::create([
@@ -579,8 +579,7 @@ class ModelTest extends TestCase
         $addressData = ['id' => 5, 'user_id' => 1, 'address' => '123 Main St'];
         $mockDbScen1->expects($this->once())
             ->method('getOne')
-            // ->with(Address::getTable(), Address::getSelect()) // getSelect can be complex, ensure table is right
-            ->with(Address::getTable(), $this->isType('string')) // Check table, and that select is a string
+            ->with(Address::getTable(), Address::getSelect()) // Expect null for all columns when '*' is requested
             ->willReturn($addressData);
 
         // The setModel call happens inside Address::db() which is called by Address::find()
@@ -616,7 +615,7 @@ class ModelTest extends TestCase
 
         $mockDbScen2->expects($this->once())
             ->method('getOne')
-            ->with(Address::getTable(), $this->isType('string'))
+            ->with(Address::getTable(), Address::getSelect()) // Expect null for all columns when '*' is requested
             ->willReturn(null); // Item not found
         $mockDbScen2->method('setModel')->willReturnSelf();
 

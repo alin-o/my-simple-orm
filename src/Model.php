@@ -723,7 +723,18 @@ abstract class Model
         foreach ($this->_withRelated as $relString) {
             // Parse relation string, e.g., "relationName" or "relationName:col1,col2"
             list($rel, $colsSpec) = array_pad(explode(':', $relString, 2), 2, null);
-
+            if (!empty($this->relatedCache[$rel])) {
+                $cached = $this->relatedCache[$rel];
+                if ($cached instanceof self) {
+                    $r[$rel] = $cached->toArray();
+                    continue;
+                }
+                // If $cached is an array of hydrated objects, dehydrate each
+                if (is_array($cached) && !empty($cached) && is_object($cached[0]) && is_a($cached[0], static::class)) {
+                    $r[$rel] = array_map(fn($obj) => $obj->toArray(), $cached);
+                    continue;
+                }
+            }
             if (!empty(static::$relations[$rel])) {
                 $relatedClass = static::$relations[$rel][1];
                 // Default to ID field if no columns specified, otherwise parse comma-separated columns
