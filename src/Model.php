@@ -1218,11 +1218,13 @@ abstract class Model
                     static::db()->where($jfk, $this->id)
                         ->where($fk, $value, 'NOT IN')
                         ->delete($join);
-                    $data = [];
-                    foreach ($value as $a) {
-                        $data[] = [$fk => $a, $jfk => $this->id];
+                    if (!empty($value)) {
+                        $data = [];
+                        foreach ($value as $a) {
+                            $data[] = [$fk => $a, $jfk => $this->id];
+                        }
+                        static::db()->ignore()->insertMulti($join, $data);
                     }
-                    static::db()->ignore()->insertMulti($join, $data);
                 } elseif ($value == null) {
                     static::db()->where($jfk, $this->id)->delete($join);
                 } else {
