@@ -1215,10 +1215,13 @@ abstract class Model
                         }
                         $value = $ids;
                     }
-                    static::db()->where($jfk, $this->id)
-                        ->where($fk, $value, 'NOT IN')
-                        ->delete($join);
-                    if (!empty($value)) {
+                    if (empty($value)) {
+                        static::db()->where($jfk, $this->id)
+                            ->delete($join);
+                    } else {
+                        static::db()->where($jfk, $this->id)
+                            ->where($fk, $value, 'NOT IN')
+                            ->delete($join);
                         $data = [];
                         foreach ($value as $a) {
                             $data[] = [$fk => $a, $jfk => $this->id];
