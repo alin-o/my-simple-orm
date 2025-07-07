@@ -257,6 +257,9 @@ class ModelRelationsTest extends TestCase
         $user = User::find($this->user->id);
         $roles = $user->roles;
         $this->assertCount(0, $roles, 'User should have no roles after removal');
+
+        $roles = $user->roles()->all();
+        $this->assertCount(0, $roles, 'User should have no roles after removal');
     }
 
     public function testCanGetUsersForRole(): void

@@ -1334,6 +1334,9 @@ abstract class Model
 
                 case self::HAS_MANY:
                     $modelIds = array_map(fn($m) => $m->id, $models);
+                    if (empty($modelIds)) {
+                        break;
+                    }
                     $relatedModels = $relatedClass::db()->where($foreignKey, $modelIds, 'IN')->get($relatedClass::getTable());
 
                     $relatedModelsByFk = [];
@@ -1483,7 +1486,10 @@ abstract class Model
 
         $relatedModelIds = array_map(fn($row) => $row[$relatedPivotKey], $relatedKeyValuesInPivot);
 
-        return $relatedClass::db()->where($relatedClass::getIdField(), $relatedModelIds, 'IN')->setModel($relatedClass, $relatedClass::getTable(), $relatedClass::getSelect());
+        if (empty($relatedModelIds)) {
+            return $relatedClass::where($relatedClass::getIdField(), null, 'IS');
+        }
+        return $relatedClass::where($relatedClass::getIdField(), $relatedModelIds, 'IN');
     }
 
     /**
@@ -1521,9 +1527,9 @@ abstract class Model
             ->get($throughClass::getTable(), null, $actualThroughLocalKey);
 
         $ids = array_column($intermediateIds, $actualThroughLocalKey);
-
-        return $relatedClass::db()
-            ->where($secondForeignKey, $ids, 'IN')
-            ->setModel($relatedClass, $relatedClass::getTable(), $relatedClass::getSelect());
+        if (empty($ids)) {
+            return $relatedClass::where($secondForeignKey, null, 'IS');
+        }
+        return $relatedClass::where($secondForeignKey, $ids, 'IN');
     }
 }
