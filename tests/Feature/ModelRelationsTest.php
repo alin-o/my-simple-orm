@@ -243,8 +243,20 @@ class ModelRelationsTest extends TestCase
         $roleIds = array_map(fn($r) => $r->id, $roles);
         $this->assertContains($role1->id, $roleIds, 'Role1 should be assigned');
         $this->assertContains($role2->id, $roleIds, 'Role2 should be assigned');
-        $role1->delete();
-        $role2->delete();
+        $this->user->roles = [$role1->id];
+        $roles = $this->user->roles;
+        $this->assertCount(1, $roles, 'User should one role after one removal');
+        $this->user->roles = [$role2->id];
+        $roles = $this->user->roles;
+        $this->assertCount(1, $roles, 'User should one role after switch');
+        $roleIds = array_map(fn($r) => $r->id, $roles);
+        $this->assertContains($role2->id, $roleIds, 'Role2 should be assigned');
+        $this->user->roles = [];
+        $roles = $this->user->roles;
+        $this->assertCount(0, $roles, 'User should have no roles after removal');
+        $user = User::find($this->user->id);
+        $roles = $user->roles;
+        $this->assertCount(0, $roles, 'User should have no roles after removal');
     }
 
     public function testCanGetUsersForRole(): void

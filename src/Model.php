@@ -1207,7 +1207,7 @@ abstract class Model
                 $jfk = $r[4];
                 if (is_a($value, $class)) {
                     static::db()->ignore()->insert($join, [$fk => $value->id, $jfk => $this->id]);
-                } elseif (is_array($value)) {
+                } elseif (is_array($value) && !empty($value)) {
                     if (is_a(current($value), $class)) {
                         $ids = [];
                         foreach ($value as $v) {
@@ -1215,26 +1215,24 @@ abstract class Model
                         }
                         $value = $ids;
                     }
-                    if (empty($value)) {
-                        static::db()->where($jfk, $this->id)
-                            ->delete($join);
-                    } else {
-                        static::db()->where($jfk, $this->id)
-                            ->where($fk, $value, 'NOT IN')
-                            ->delete($join);
-                        $data = [];
-                        foreach ($value as $a) {
-                            $data[] = [$fk => $a, $jfk => $this->id];
-                        }
-                        static::db()->ignore()->insertMulti($join, $data);
+                    static::db()->where($jfk, $this->id)
+                        ->delete($join);
+                    static::db()->where($jfk, $this->id)
+                        ->where($fk, $value, 'NOT IN')
+                        ->delete($join);
+                    $data = [];
+                    foreach ($value as $a) {
+                        $data[] = [$fk => $a, $jfk => $this->id];
                     }
-                } elseif ($value == null) {
+                    static::db()->ignore()->insertMulti($join, $data);
+                } elseif (empty($value)) {
                     static::db()->where($jfk, $this->id)->delete($join);
                 } else {
                     static::db()->ignore()->insert($join, [$fk => $value, $jfk => $this->id]);
                 }
                 break;
         }
+        unset($this->relatedCache[$related]);
     }
 
     /**
