@@ -568,12 +568,7 @@ abstract class Model
             return $this->_data[$property];
         }
         if ($this->id) {
-            if (!empty(static::$relations[$property])) {
-                // Standard behavior: fetch from statically defined relations
-                return $this->getRelated($property);
-            }
-
-            // New behavior: check for an Eloquent-style relationship method
+            // Eloquent-style relationship method access (e.g., $user->posts)
             if (method_exists($this, $property)) {
                 // Check cache first to prevent recursion if the method itself uses magic __get
                 // or if the relationship has already been loaded.
@@ -597,7 +592,6 @@ abstract class Model
                     }
                 }
 
-                $relatedModel = null;
                 if ($relationType === Model::BELONGS_TO || $relationType === Model::HAS_ONE) {
                     $relatedModel = $queryBuilder->first();
                 } elseif ($relationType === Model::HAS_MANY || $relationType === Model::BELONGS_TO_MANY || $relationType === Model::HAS_MANY_THROUGH) {
@@ -606,6 +600,11 @@ abstract class Model
 
                 $this->relatedCache[$property] = $relatedModel;
                 return $relatedModel;
+            }
+
+            // Standard behavior: fetch from statically defined relations (fallback if no method exists)
+            if (!empty(static::$relations[$property])) {
+                return $this->getRelated($property);
             }
 
             if ($p = strpos($property, '_count')) {
@@ -655,14 +654,24 @@ abstract class Model
      */
     public function __call($name, $arguments)
     {
-        // Eloquent-style query builder access
-        if (str_ends_with($name, 'Query')) {
-            $relationName = substr($name, 0, -5);
-            // Only re-route if the original method exists and is not one of the *Query methods themselves
-            if (method_exists($this, $relationName) && !method_exists($this, $name)) {
-                // Pass all original arguments, and set the last one to true for getQueryBuilder
-                $arguments[count($arguments) - 1] = true;
-                return call_user_func_array([$this, $relationName], $arguments);
+        // Eloquent-style dynamic relation method calls (e.g., $user->posts())
+        if (isset(static::$relations[$name])) {
+            $relation = static::$relations[$name];
+            list($type, $class, $fk) = $relation;
+
+            switch ($type) {
+                case Model::BELONGS_TO:
+                    return $this->belongsTo($class, $fk);
+                case Model::HAS_ONE:
+                    return $this->hasOne($class, $fk);
+                case Model::HAS_MANY:
+                    return $this->hasMany($class, $fk);
+                case Model::BELONGS_TO_MANY:
+                case Model::HAS_MANY_THROUGH:
+                    if (count($relation) >= 5) {
+                        return $this->belongsToMany($class, $relation[3], $relation[4], $fk);
+                    }
+                    break;
             }
         }
 
@@ -985,7 +994,7 @@ abstract class Model
                 $relatedItems = $class::db()->where($fk, $this->id)->get($class::getTable());
                 return array_map(fn($data) => new $class($data), $relatedItems);
 
-            case Model::BELONGS_TO_MANY: // Fall through to HAS_MANY_THROUGH logic
+            case Model::BELONGS_TO_MANY:
             case Model::HAS_MANY_THROUGH:
                 $joinTable = $r[3];
                 $relatedFk = $r[4];
@@ -1115,7 +1124,7 @@ abstract class Model
                 if (count($r) < 5) return []; // Expects pivot table, current model FK on pivot, related model FK on pivot
                 $pivotTable = $r[3];
                 $currentModelFkOnPivot = $r[4];
-                $relatedModelFkOnPivot = $fk; // This is $r[2]
+                $relatedModelFkOnPivot = $fk;
 
                 if ($this->id === null) return [];
                 $relatedIdsData = static::db()->where($currentModelFkOnPivot, $this->id)
@@ -1209,9 +1218,11 @@ abstract class Model
                     static::db()->where($jfk, $this->id)
                         ->where($fk, $value, 'NOT IN')
                         ->delete($join);
+                    $data = [];
                     foreach ($value as $a) {
-                        static::db()->ignore()->insert($join, [$fk => $a, $jfk => $this->id]);
+                        $data[] = [$fk => $a, $jfk => $this->id];
                     }
+                    static::db()->ignore()->insertMulti($join, $data);
                 } elseif ($value == null) {
                     static::db()->where($jfk, $this->id)->delete($join);
                 } else {

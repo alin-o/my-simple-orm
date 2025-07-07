@@ -98,6 +98,13 @@ class EloquentStyleRelationsTest extends TestCase
         $addressUser = $query->first();
         $this->assertInstanceOf(User::class, $addressUser);
         $this->assertEquals($user->id(), $addressUser->id());
+
+        $query = $address->user();
+        $this->assertInstanceOf(MysqliDb::class, $query);
+
+        $addressUser = $query->first();
+        $this->assertInstanceOf(User::class, $addressUser);
+        $this->assertEquals($user->id(), $addressUser->id());
     }
 
     public function testHasOneRelation()
@@ -195,6 +202,13 @@ class EloquentStyleRelationsTest extends TestCase
         $query = $roleAdmin->eloquentUsers();
         $this->assertInstanceOf(MysqliDb::class, $query);
 
+        $adminUsers = $query->all();
+        $this->assertCount(1, $adminUsers);
+        $this->assertInstanceOf(User::class, $adminUsers[0]);
+        $this->assertEquals($user->id(), $adminUsers[0]->id());
+
+        $query = $roleAdmin->users();
+        $this->assertInstanceOf(MysqliDb::class, $query);
         $adminUsers = $query->all();
         $this->assertCount(1, $adminUsers);
         $this->assertInstanceOf(User::class, $adminUsers[0]);
