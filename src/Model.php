@@ -1105,7 +1105,6 @@ abstract class Model
 
         list($type, $class, $fk) = $r;
 
-        /** @var Model $class */
         $selectString = null;
         // If the only column requested is '*', then we want to select all columns.
         if (count($columns) === 1 && $columns[0] === '*') {
@@ -1491,7 +1490,7 @@ abstract class Model
         if (!class_exists($relatedClass)) {
             throw new Exception("Related class {$relatedClass} not found.");
         }
-        $foreignKeyValue = $this->{$foreignKey} ?? null;
+        $foreignKeyValue = $this->{$foreignKey} ?? $this->id();
         $actualOwnerKey = $ownerKey ?: $relatedClass::getIdField();
 
         return $relatedClass::where($actualOwnerKey, $foreignKeyValue);
