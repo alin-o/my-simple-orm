@@ -68,7 +68,7 @@ abstract class Model
     /**
      * @var array<string> List of fillable fields. when defined, only there fields can be changed
      */
-    protected $fillable;
+    protected static $fillable;
 
     /**
      * @var array<string> Fields to be encrypted with AES in the database
