@@ -819,22 +819,17 @@ abstract class Model
     public static function getSelect()
     {
         $select = static::$select;
-        if ($select == '*' && !empty(static::$aes_fields)) {
-            // If select is '*', we need to build a select list with AES_DECRYPT for AES fields
-            // and plain for others. But we don't know all fields statically, so fallback to '*'.
-            // Best effort: warn in docs, or require explicit select if using AES fields.
-            // For now, just return '*', but document this limitation.
-            // Optionally, could fetch columns from DB schema, but that's out of scope here.
-            return '*';
-        } elseif ($select != '*' && !empty(static::$aes_fields)) {
+        if ($select != '*' && !empty(static::$aes_fields)) {
             // Replace AES fields in select with AES_DECRYPT
             $fields = array_map('trim', explode(',', $select));
             foreach ($fields as &$field) {
-                $fieldName = trim($field, "` ");
-                if (in_array($fieldName, static::$aes_fields)) {
-                    $field = "AES_DECRYPT(`$fieldName`, @aes_key) as `$fieldName`";
-                } else {
-                    $field = "`$fieldName`";
+                if (!stristr($field, 'AES_DECRYPT')) {
+                    $fieldName = trim($field, "` ");
+                    if (in_array($fieldName, static::$aes_fields)) {
+                        $field = "AES_DECRYPT(`$fieldName`, @aes_key) as `$fieldName`";
+                    } else {
+                        $field = $fieldName == '*' ? '*' : "`$fieldName`";
+                    }
                 }
             }
             return implode(', ', $fields);

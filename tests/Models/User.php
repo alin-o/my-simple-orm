@@ -7,6 +7,7 @@ use AlinO\MyOrm\Model;
 class User extends Model
 {
     protected static $table = 'users';
+    protected static $select = '*, aes_pwd';
 
     protected static $relations = [
         'addresses' => [Model::HAS_MANY, Address::class, 'user_id'],
