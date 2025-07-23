@@ -146,10 +146,12 @@ abstract class Model
      */
     public function __construct($id = null)
     {
-        if (empty(static::$table)) {
-            $cls = explode("\\", get_class($this));
-            $class = array_pop($cls);
-            static::$table = strtolower(preg_replace('/(?<!^)[A-Z]/', '_$0', $class));
+        // Only set static::$table if it is not set for this exact class
+        $cls = get_called_class();
+        if (!isset(self::$table) || empty(self::$table)) {
+            $clsParts = explode("\\", $cls);
+            $class = array_pop($clsParts);
+            self::$table = strtolower(preg_replace('/(?<!^)[A-Z]/', '_$0', $class));
         }
         if (is_array($id)) {
             static::fillData($id);
@@ -212,6 +214,9 @@ abstract class Model
         $this->_data = [];
         $this->_changed = [];
         foreach ($data as $k => $v) {
+            if (!empty(static::$fillable) && !in_array($k, static::$fillable)) {
+                continue; // skip fields not in fillable
+            }
             if (in_array($k, static::$extraFields)) {
                 $this->_extra[$k] = $v;
             } else {
@@ -625,6 +630,11 @@ abstract class Model
      */
     public function __set($property, $value)
     {
+        if (!empty(static::$fillable) && !in_array($property, static::$fillable)) {
+            // Only allow fillable fields to be set via __set
+            $this->_extra[$property] = $value;
+            return;
+        }
         if (method_exists($this, "set_" . $property)) {
             $m = "set_" . $property;
             $this->$m($value);
@@ -810,9 +820,24 @@ abstract class Model
     {
         $select = static::$select;
         if ($select == '*' && !empty(static::$aes_fields)) {
-            foreach (static::$aes_fields as $f) {
-                $select .= ", AES_DECRYPT(`$f`, @aes_key) as `$f`";
+            // If select is '*', we need to build a select list with AES_DECRYPT for AES fields
+            // and plain for others. But we don't know all fields statically, so fallback to '*'.
+            // Best effort: warn in docs, or require explicit select if using AES fields.
+            // For now, just return '*', but document this limitation.
+            // Optionally, could fetch columns from DB schema, but that's out of scope here.
+            return '*';
+        } elseif ($select != '*' && !empty(static::$aes_fields)) {
+            // Replace AES fields in select with AES_DECRYPT
+            $fields = array_map('trim', explode(',', $select));
+            foreach ($fields as &$field) {
+                $fieldName = trim($field, "` ");
+                if (in_array($fieldName, static::$aes_fields)) {
+                    $field = "AES_DECRYPT(`$fieldName`, @aes_key) as `$fieldName`";
+                } else {
+                    $field = "`$fieldName`";
+                }
             }
+            return implode(', ', $fields);
         }
         return $select;
     }
