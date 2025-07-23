@@ -903,7 +903,7 @@ abstract class Model
      * @param string|null $key The field to use as array key (optional, defaults to ID)
      * @return array<mixed> Array of records or field values
      */
-    public static function list($field = null, $key = null)
+    public static function list($field = null, $key = null): array
     {
         if (static::$listSorting) {
             static::db()->orderBy(...static::$listSorting);
@@ -916,7 +916,9 @@ abstract class Model
         $rows = static::db()->get(static::$table, null, $field ? $key . ', ' . $field : static::getSelect());
         $data = [];
         foreach ($rows as $r) {
-            $data[$r[$key]] = $field ? $r[$field] : $r;
+            if (isset($r[$key])) {
+                $data[$r[$key]] = $field ? ($r[$field] ?? null) : $r;
+            }
         }
         return $data;
     }
@@ -926,7 +928,7 @@ abstract class Model
      *
      * @return bool True on success, false on failure
      */
-    public function updateSearchIndex()
+    public function updateSearchIndex(): bool
     {
         $searchTerms = [];
         foreach (static::$searchIndex as $key => $col) {
@@ -934,12 +936,14 @@ abstract class Model
                 if (in_array($key, $this->_fields)) {
                     if (!empty($this->_data[$key])) {
                         $data = json_decode($this->_data[$key], true);
-                        foreach ($col as $c) {
-                            if (!empty($data[$c])) {
-                                $terms = explode(" ", preg_replace("/\W|_/", ' ', strtolower($data[$c])));
-                                foreach ($terms as $t) {
-                                    if (!in_array($t, $searchTerms)) {
-                                        $searchTerms[] = $t;
+                        if (is_array($data)) {
+                            foreach ($col as $c) {
+                                if (!empty($data[$c])) {
+                                    $terms = explode(" ", preg_replace("/\W|_/", ' ', strtolower($data[$c])));
+                                    foreach ($terms as $t) {
+                                        if (!empty($t) && !in_array($t, $searchTerms)) {
+                                            $searchTerms[] = $t;
+                                        }
                                     }
                                 }
                             }
@@ -950,7 +954,7 @@ abstract class Model
                 if (!empty($this->_data[$col])) {
                     $terms = explode(" ", preg_replace("/\W|_/", ' ', strtolower($this->_data[$col])));
                     foreach ($terms as $t) {
-                        if (!in_array($t, $searchTerms)) {
+                        if (!empty($t) && !in_array($t, $searchTerms)) {
                             $searchTerms[] = $t;
                         }
                     }
@@ -981,9 +985,9 @@ abstract class Model
      * Checks if a property is a defined relation.
      *
      * @param string $property The property name to check
-     * @return bool True if it’s a relation, false otherwise
+     * @return bool True if it's a relation, false otherwise
      */
-    public static function hasRelation($property)
+    public static function hasRelation($property): bool
     {
         return !empty(static::$relations[$property]);
     }
@@ -994,7 +998,7 @@ abstract class Model
      * @param string $related The relation name
      * @return mixed|null The related data or null if not found
      */
-    public function getRelated($related)
+    public function getRelated($related): mixed
     {
         if (empty(static::$relations[$related])) {
             return null;
@@ -1011,7 +1015,7 @@ abstract class Model
      * @param string $related The relation name
      * @return mixed|null The related data or null if invalid
      */
-    protected function fetchRelated($related)
+    protected function fetchRelated($related): mixed
     {
         $r = static::$relations[$related];
         if (!is_array($r)) {
@@ -1050,7 +1054,7 @@ abstract class Model
      * @param string $related The relation name
      * @return int|null The count or null if invalid
      */
-    public function countRelated($related)
+    public function countRelated($related): ?int
     {
         if (empty(static::$relations[$related])) {
             return 0;
@@ -1223,6 +1227,9 @@ abstract class Model
 
             case Model::BELONGS_TO_MANY: // Fall through
             case Model::HAS_MANY_THROUGH:
+                if (count($r) < 5) {
+                    break; // Not enough elements for pivot table configuration
+                }
                 $join = $r[3];
                 $jfk = $r[4];
                 if (is_a($value, $class)) {
@@ -1237,14 +1244,16 @@ abstract class Model
                     }
                     static::db()->where($jfk, $this->id)
                         ->delete($join);
-                    static::db()->where($jfk, $this->id)
-                        ->where($fk, $value, 'NOT IN')
-                        ->delete($join);
-                    $data = [];
-                    foreach ($value as $a) {
-                        $data[] = [$fk => $a, $jfk => $this->id];
+                    if (!empty($value)) {
+                        static::db()->where($jfk, $this->id)
+                            ->where($fk, $value, 'NOT IN')
+                            ->delete($join);
+                        $data = [];
+                        foreach ($value as $a) {
+                            $data[] = [$fk => $a, $jfk => $this->id];
+                        }
+                        static::db()->ignore()->insertMulti($join, $data);
                     }
-                    static::db()->ignore()->insertMulti($join, $data);
                 } elseif (empty($value)) {
                     static::db()->where($jfk, $this->id)->delete($join);
                 } else {
@@ -1260,7 +1269,7 @@ abstract class Model
      *
      * @param string $related The relation name
      * @param mixed $id The ID to find
-     * @return static|null The related model instance or null if not found
+     * @return mixed|null The related model instance or null if not found
      */
     public function findRelated($related, $id)
     {
@@ -1283,17 +1292,16 @@ abstract class Model
      * Sets up a query for models owned by a specific object (BELONGS_TO).
      *
      * @param Model $owner The owning model instance
-     * @return string The class name for chaining
+     * @return MysqliDb The query builder for chaining
      */
-    public static function of(Model $owner)
+    public static function of(Model $owner): MysqliDb
     {
         foreach (static::$relations as $relation) {
             if ($relation[0] == static::BELONGS_TO && is_a($owner, $relation[1])) {
-                static::where($relation[2], $owner->id);
-                return get_called_class();
+                return static::where($relation[2], $owner->id);
             }
         }
-        return get_called_class();
+        return static::db();
     }
 
     /**
@@ -1303,7 +1311,7 @@ abstract class Model
      * @param string ...$related Variable number of relation names, optionally with columns.
      * @return $this The current instance for chaining
      */
-    public function with(...$related)
+    public function with(...$related): static
     {
         $this->_withRelated = []; // Reset if called multiple times, or append based on desired behavior
         foreach ($related as $relString) {
@@ -1338,7 +1346,7 @@ abstract class Model
 
             switch ($type) {
                 case self::BELONGS_TO:
-                    $foreignKeyValues = array_filter(array_map(fn($m) => $m->$foreignKey, $models));
+                    $foreignKeyValues = array_filter(array_map(fn($m) => $m->$foreignKey ?? null, $models), fn($v) => $v !== null);
                     if (empty($foreignKeyValues)) continue 2;
 
                     $relatedModels = $relatedClass::findAll(array_unique($foreignKeyValues), $relatedClass::getIdField());
@@ -1348,7 +1356,8 @@ abstract class Model
                     }
 
                     foreach ($models as $model) {
-                        $model->setRelation($relationName, $relatedModelsById[$model->$foreignKey] ?? null);
+                        $foreignKeyValue = $model->$foreignKey ?? null;
+                        $model->setRelation($relationName, $foreignKeyValue ? ($relatedModelsById[$foreignKeyValue] ?? null) : null);
                     }
                     break;
 
@@ -1393,7 +1402,7 @@ abstract class Model
      * @param mixed $id The ID to load
      * @return static|null The model instance or null if not found
      */
-    public static function load($class, $id)
+    public static function load($class, $id): ?static
     {
         if (class_exists($class)) {
             return $class::find($id);
@@ -1405,7 +1414,12 @@ abstract class Model
         return null;
     }
 
-    public function getChanges()
+    /**
+     * Gets the changed fields.
+     *
+     * @return array<string, mixed> The changed fields
+     */
+    public function getChanges(): array
     {
         return $this->_changed;
     }
