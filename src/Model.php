@@ -66,6 +66,11 @@ abstract class Model
     protected $_fields = [];
 
     /**
+     * @var array<string> List of fillable fields. when defined, only there fields can be changed
+     */
+    protected $fillable;
+
+    /**
      * @var array<string> Fields to be encrypted with AES in the database
      * the model handles encryption/decryption automatically.
      */
