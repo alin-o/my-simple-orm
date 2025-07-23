@@ -152,7 +152,7 @@ abstract class Model
     public function __construct($id = null)
     {
         // Only set static::$table if it is not set for this exact class
-        $cls = get_called_class();
+        $cls = static::class;
         if (!isset(static::$table) || empty(static::$table)) {
             $clsParts = explode("\\", $cls);
             $class = array_pop($clsParts);
@@ -246,8 +246,11 @@ abstract class Model
         } elseif (empty(static::$database)) {
             static::$_conn[$dbName] = MysqliDb::getInstance();
             $mdb = static::$_conn[$dbName];
+        } else {
+            $mdb = null;
         }
-        if (@$mdb) {
+
+        if ($mdb) {
             $mdb->resetQuery();
             $mdb->setModel(static::class, static::getTable(), static::getSelect());
             return $mdb;
@@ -300,7 +303,7 @@ abstract class Model
      * @param string|null $field The field to search in (default: null - use ID field)
      * @return array<static> Array of model instances
      */
-    public static function findAll(array $ids, $field = null)
+    public static function findAll(array $ids, $field = null): array
     {
         if (empty($ids)) return [];
         $rows = static::db()->where($field ?: static::$idField, $ids, 'IN')->get(static::$table);
@@ -385,12 +388,13 @@ abstract class Model
             }
         }
         if ($i->save()) {
-            $i = new static($i->id);
-            $i->afterCreate();
+            // Reload the model to ensure we have the latest data from the database
+            $createdModel = new static($i->id);
+            $createdModel->afterCreate();
             foreach ($related as $f => $v) {
-                $i->$f = $v;
+                $createdModel->$f = $v;
             }
-            return $i;
+            return $createdModel;
         }
         throw new DbException("Could not create " . static::class);
     }
@@ -456,8 +460,9 @@ abstract class Model
                 $this->id = static::db()
                     ->insert(static::$table, $this->_changed);
                 if ($this->id) {
-                    if (!is_numeric($this->id)) {
-                        $this->id = empty($this->_data[static::$idField]) ? 0 : $this->_data[static::$idField];
+                    // Update the data array with the new ID if it wasn't set
+                    if (!isset($this->_data[static::$idField])) {
+                        $this->_data[static::$idField] = $this->id;
                     }
                     if (static::$searchIndex) {
                         $this->updateSearchIndex();
@@ -823,17 +828,20 @@ abstract class Model
         if ($select != '*' && !empty(static::$aes_fields)) {
             // Replace AES fields in select with AES_DECRYPT
             $fields = array_map('trim', explode(',', $select));
-            foreach ($fields as &$field) {
+            $processedFields = [];
+            foreach ($fields as $field) {
                 if (!stristr($field, 'AES_DECRYPT')) {
                     $fieldName = trim($field, "` ");
                     if (in_array($fieldName, static::$aes_fields)) {
-                        $field = "AES_DECRYPT(`$fieldName`, @aes_key) as `$fieldName`";
+                        $processedFields[] = "AES_DECRYPT(`" . addslashes($fieldName) . "`, @aes_key) as `" . addslashes($fieldName) . "`";
                     } else {
-                        $field = $fieldName == '*' ? '*' : "`$fieldName`";
+                        $processedFields[] = $fieldName == '*' ? '*' : "`" . addslashes($fieldName) . "`";
                     }
+                } else {
+                    $processedFields[] = $field;
                 }
             }
-            return implode(', ', $fields);
+            return implode(', ', $processedFields);
         }
         return $select;
     }
@@ -869,13 +877,18 @@ abstract class Model
      *
      * @return bool True on success, false on failure
      */
-    public function delete()
+    public function delete(): bool
     {
         if ($this->id) {
             if ($this->beforeDelete()) {
                 $deleted = static::db()->where(static::$idField, $this->id)->delete(static::$table);
                 if ($deleted) {
                     $this->afterDelete();
+                    // Clear the model state after successful deletion
+                    $this->_data = [];
+                    $this->_fields = [];
+                    $this->_changed = [];
+                    $this->id = null;
                 }
                 return $deleted;
             }
@@ -1089,20 +1102,6 @@ abstract class Model
         list($type, $class, $fk) = $r;
 
         /** @var Model $class */
-        // Ensure the ID field of the related class is always selected.
-        $relatedIdField = $class::getIdField();
-        $selectColumns = array_unique(array_merge($columns, [$relatedIdField]));
-
-        $relatedAesFields = $class::getStaticAesFields();
-        $selectParts = [];
-        foreach ($selectColumns as $col) {
-            $trimmedCol = trim($col);
-            if (in_array($trimmedCol, $relatedAesFields)) {
-                $selectParts[] = "AES_DECRYPT(`{$trimmedCol}`, @aes_key) AS `{$trimmedCol}`";
-            } else {
-                $selectParts[] = "`{$trimmedCol}`";
-            }
-        }
         $selectString = null;
         // If the only column requested is '*', then we want to select all columns.
         if (count($columns) === 1 && $columns[0] === '*') {
@@ -1166,9 +1165,9 @@ abstract class Model
      * Gets the IDs of related items for a specified relation.
      *
      * @param string $related The relation name
-     * @return mixed|null The related IDs or null if invalid
+     * @return array<mixed> The related IDs or empty array if invalid
      */
-    public function getRelatedIds($related)
+    public function getRelatedIds($related): array
     {
         if (empty(static::$relations[$related])) {
             return [];
@@ -1478,7 +1477,7 @@ abstract class Model
         if (!class_exists($relatedClass)) {
             throw new Exception("Related class {$relatedClass} not found.");
         }
-        $foreignKeyValue = $this->{$foreignKey} ?? $this->id();
+        $foreignKeyValue = $this->{$foreignKey} ?? null;
         $actualOwnerKey = $ownerKey ?: $relatedClass::getIdField();
 
         return $relatedClass::where($actualOwnerKey, $foreignKeyValue);
