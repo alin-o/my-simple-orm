@@ -106,12 +106,12 @@ abstract class Model
     /**
      * @var array<string, \AlinO\Db\MysqliDb> Cached database connections by database name
      */
-    protected static $_conn;
+    protected static $_conn = [];
 
     /**
      * @var \DateTimeZone|null Timezone for date operations
      */
-    protected static $_tz;
+    protected static $_tz = null;
 
     /**
      * @var string The field used for full-text search indexing (default: 'search')
@@ -153,10 +153,10 @@ abstract class Model
     {
         // Only set static::$table if it is not set for this exact class
         $cls = get_called_class();
-        if (!isset(self::$table) || empty(self::$table)) {
+        if (!isset(static::$table) || empty(static::$table)) {
             $clsParts = explode("\\", $cls);
             $class = array_pop($clsParts);
-            self::$table = strtolower(preg_replace('/(?<!^)[A-Z]/', '_$0', $class));
+            static::$table = strtolower(preg_replace('/(?<!^)[A-Z]/', '_$0', $class));
         }
         if (is_array($id)) {
             static::fillData($id);
@@ -522,14 +522,13 @@ abstract class Model
             if (!empty(static::$relations[$property])) {
                 return true;
             }
-            if ($p = strpos($property, '_count')) {
-                if ($p == strlen($property) - 6) {
-                    $prop = substr($property, 0, $p);
-                    if (!empty(static::$relations[$prop])) {
-                        $rel = static::$relations[$prop];
-                        if ($rel[0] == Model::HAS_MANY || $rel[0] == Model::HAS_MANY_THROUGH) {
-                            return true;
-                        }
+            // Bug 3: Use substr to check for _count suffix
+            if (substr($property, -6) === '_count') {
+                $prop = substr($property, 0, -6);
+                if (!empty(static::$relations[$prop])) {
+                    $rel = static::$relations[$prop];
+                    if ($rel[0] == Model::HAS_MANY || $rel[0] == Model::HAS_MANY_THROUGH) {
+                        return true;
                     }
                 }
             }
@@ -617,11 +616,10 @@ abstract class Model
                 return $this->getRelated($property);
             }
 
-            if ($p = strpos($property, '_count')) {
-                if ($p == strlen($property) - 6) {
-                    $prop = substr($property, 0, $p);
-                    return $this->countRelated($prop);
-                }
+            // Bug 3: Use substr to check for _count suffix
+            if (substr($property, -6) === '_count') {
+                $prop = substr($property, 0, -6);
+                return $this->countRelated($prop);
             }
         }
         return $this->_extra[$property] ?? null;
