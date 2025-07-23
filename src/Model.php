@@ -522,7 +522,6 @@ abstract class Model
             if (!empty(static::$relations[$property])) {
                 return true;
             }
-            // Bug 3: Use substr to check for _count suffix
             if (substr($property, -6) === '_count') {
                 $prop = substr($property, 0, -6);
                 if (!empty(static::$relations[$prop])) {
@@ -616,7 +615,6 @@ abstract class Model
                 return $this->getRelated($property);
             }
 
-            // Bug 3: Use substr to check for _count suffix
             if (substr($property, -6) === '_count') {
                 $prop = substr($property, 0, -6);
                 return $this->countRelated($prop);
