@@ -96,7 +96,7 @@ abstract class Model
     /**
      * @var int|string|null  The primary identifier of this instance
      */
-    protected mixed $id;
+    protected mixed $id = null;
 
     /**
      * @var array<string> Relations to include in toArray() output
