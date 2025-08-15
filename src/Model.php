@@ -565,13 +565,16 @@ abstract class Model
             $m = "get_" . $property;
             return $this->$m();
         }
-        if (in_array($property, $this->_fields)) {
-            if (in_array($property, static::$aes_fields) && empty($this->_data[$property])) {
-                $d = static::db()
-                    ->where(static::$idField, $this->id)
-                    ->getOne(static::$table, "AES_DECRYPT(`$property`, @aes_key) as `$property`");
-                $this->_data[$property] = $d[$property];
+        if (in_array($property, static::$aes_fields) && empty($this->_data[$property])) {
+            $d = static::db()
+                ->where(static::$idField, $this->id)
+                ->getOne(static::$table, "AES_DECRYPT(`$property`, @aes_key) as `$property`");
+            $this->_data[$property] = $d[$property];
+            if (!in_array($property, $this->_fields)) {
+                $this->_fields[] = $property;
             }
+        }
+        if (in_array($property, $this->_fields)) {
             if (in_array($property, static::$json_fields) && is_string($this->_data[$property])) {
                 try {
                     $this->_data[$property] = json_decode($this->_data[$property]);
@@ -829,11 +832,15 @@ abstract class Model
             // Replace AES fields in select with AES_DECRYPT
             $fields = array_map('trim', explode(',', $select));
             $processedFields = [];
-            foreach ($fields as $field) {
-                if (!stristr($field, 'AES_DECRYPT')) {
+            foreach ($fields as $i => $field) {
+                if (stristr($field, '@aes_key')) {
+                    $processedFields[] = $field;
+                } else if (!stristr($field, 'AES_DECRYPT')) {
                     $fieldName = trim($field, "` ");
                     if (in_array($fieldName, static::$aes_fields)) {
                         $processedFields[] = "AES_DECRYPT(`" . addslashes($fieldName) . "`, @aes_key) as `" . addslashes($fieldName) . "`";
+                    } else if (strpos($fieldName, ' ')) {
+                        $processedFields[] = $fieldName;
                     } else {
                         $processedFields[] = $fieldName == '*' ? '*' : "`" . addslashes($fieldName) . "`";
                     }
