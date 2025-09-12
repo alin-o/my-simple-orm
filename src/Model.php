@@ -463,8 +463,10 @@ abstract class Model
                     // Update the data array with the new ID if it wasn't set
                     if (!isset($this->_data[static::$idField])) {
                         $this->_data[static::$idField] = $this->id;
+                    } elseif ($this->id === true) {
+                        $this->id = $this->_data[static::$idField];
                     }
-                    if (static::$searchIndex) {
+                    if ($this->id !== true && static::$searchIndex) {
                         $this->updateSearchIndex();
                     }
                     $this->_changed = [];
