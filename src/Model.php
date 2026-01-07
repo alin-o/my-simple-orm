@@ -1499,7 +1499,10 @@ abstract class Model
         if (!class_exists($relatedClass)) {
             throw new Exception("Related class {$relatedClass} not found.");
         }
-        $foreignKeyValue = $this->{$foreignKey} ?? $this->id();
+        if (empty($foreignKey) || empty($this->{$foreignKey})) {
+            return $relatedClass::where($this->getIdField(), null, 'IS');    // no foreign key or value, return empty result
+        }
+        $foreignKeyValue = $this->{$foreignKey};
         $actualOwnerKey = $ownerKey ?: $relatedClass::getIdField();
 
         return $relatedClass::where($actualOwnerKey, $foreignKeyValue);
