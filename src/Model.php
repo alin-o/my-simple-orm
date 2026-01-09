@@ -238,7 +238,7 @@ abstract class Model
      *
      * @return \AlinO\Db\MysqliDb The database connection instance
      */
-    public static function db()
+    public static function db($autoReset = true)
     {
         $dbName = static::$database ?: 'default';
         if (isset(static::$_conn[$dbName])) {
@@ -251,7 +251,9 @@ abstract class Model
         }
 
         if ($mdb) {
-            $mdb->resetQuery();
+            if ($autoReset) {
+                $mdb->resetQuery();
+            }
             $mdb->setModel(static::class, static::getTable(), static::getSelect());
             return $mdb;
         }
@@ -265,9 +267,42 @@ abstract class Model
      */
     public static function where($whereProp, $whereValue = 'DBNULL', $operator = '=', $cond = 'AND')
     {
-        $mdb = static::db();
+        // Do NOT reset. Preserve existing scopes (e.g. OrganizationScope).
+        $mdb = static::db(false);
         $mdb->where($whereProp, $whereValue, $operator, $cond);
         return $mdb;
+    }
+
+    /**
+     * Finds a single record by multiple conditions safely (atomic side-query).
+     *
+     * @param array $conditions Associative array of field => value
+     * @return static|null
+     */
+    public static function findBy(array $conditions)
+    {
+        $db = static::db(false);
+        $state = method_exists($db, 'saveQueryState') ? $db->saveQueryState() : null;
+        if (!$state)
+            $db->resetQuery();
+
+        try {
+            foreach ($conditions as $field => $value) {
+                if (is_array($value) && count($value) === 3) {
+                    // Support ['field' => ['val', 'op', 'cond']] format if needed, or simple key-value
+                    $db->where($field, $value[0], $value[1], $value[2]);
+                } else {
+                    $db->where($field, $value);
+                }
+            }
+            $data = $db->getOne(static::$table, static::getSelect());
+        } finally {
+            if ($state) {
+                $db->restoreQueryState($state);
+            }
+        }
+
+        return $data ? new static($data) : null;
     }
 
     /**
@@ -305,7 +340,8 @@ abstract class Model
      */
     public static function findAll(array $ids, $field = null): array
     {
-        if (empty($ids)) return [];
+        if (empty($ids))
+            return [];
         $rows = static::db()->where($field ?: static::$idField, $ids, 'IN')->get(static::$table);
         return array_map(fn($data) => new static($data), $rows);
     }
@@ -313,7 +349,9 @@ abstract class Model
     /**
      * Hook called after the model is loaded from the database.
      */
-    protected function loaded() {}
+    protected function loaded()
+    {
+    }
 
     /**
      * Hook for before creating action (before insert in db).
@@ -330,7 +368,9 @@ abstract class Model
      * Hook for after a model is created (aka inserted in the db).
      * The data can be accessed in $this->_data.
      */
-    protected function afterCreate() {}
+    protected function afterCreate()
+    {
+    }
 
     /**
      * Hook before data is updated in the db.
@@ -347,7 +387,9 @@ abstract class Model
      * Hook after data is updated in the db.
      * The changed fields can be accessed in $this->_changed.
      */
-    protected function afterUpdate() {}
+    protected function afterUpdate()
+    {
+    }
 
     /**
      * Hook before the data is deleted in the db.
@@ -364,7 +406,9 @@ abstract class Model
      * Hook for after the data has been deleted in the db.
      * The deleted item can be accessed in $this->_data.
      */
-    protected function afterDelete() {}
+    protected function afterDelete()
+    {
+    }
 
     /**
      * Creates an item by inserting the data in the db.
@@ -1146,25 +1190,30 @@ abstract class Model
                 $data = $class::db()->where($class::getIdField(), $foreignKeyValue)->getOne($class::getTable(), $selectString);
                 return $data ? [$data] : [];
             case Model::HAS_MANY:
-                if ($this->id === null) return [];
+                if ($this->id === null)
+                    return [];
                 $results = $class::db()->where($fk, $this->id)
                     ->get($class::getTable(), null, $selectString);
                 return $results ?: [];
 
             case Model::BELONGS_TO_MANY:
             case Model::HAS_MANY_THROUGH:
-                if (count($r) < 5) return []; // Expects pivot table, current model FK on pivot, related model FK on pivot
+                if (count($r) < 5)
+                    return []; // Expects pivot table, current model FK on pivot, related model FK on pivot
                 $pivotTable = $r[3];
                 $currentModelFkOnPivot = $r[4];
                 $relatedModelFkOnPivot = $fk;
 
-                if ($this->id === null) return [];
+                if ($this->id === null)
+                    return [];
                 $relatedIdsData = static::db()->where($currentModelFkOnPivot, $this->id)
                     ->get($pivotTable, null, $relatedModelFkOnPivot);
 
-                if (empty($relatedIdsData)) return [];
+                if (empty($relatedIdsData))
+                    return [];
                 $idsToFetch = array_column($relatedIdsData, $relatedModelFkOnPivot);
-                if (empty($idsToFetch)) return [];
+                if (empty($idsToFetch))
+                    return [];
 
                 $results = $class::db()->where($class::getIdField(), $idsToFetch, 'IN')
                     ->get($class::getTable(), null, $selectString);
@@ -1348,14 +1397,16 @@ abstract class Model
 
         foreach ($relations as $relationName) {
             $relation = static::$relations[$relationName] ?? null;
-            if (!$relation) continue;
+            if (!$relation)
+                continue;
 
             list($type, $relatedClass, $foreignKey) = $relation;
 
             switch ($type) {
                 case self::BELONGS_TO:
                     $foreignKeyValues = array_filter(array_map(fn($m) => $m->$foreignKey ?? null, $models), fn($v) => $v !== null);
-                    if (empty($foreignKeyValues)) continue 2;
+                    if (empty($foreignKeyValues))
+                        continue 2;
 
                     $relatedModels = $relatedClass::findAll(array_unique($foreignKeyValues), $relatedClass::getIdField());
                     $relatedModelsById = [];
