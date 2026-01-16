@@ -251,6 +251,8 @@ abstract class Model
         }
 
         if ($mdb) {
+            // Clone the master connection to provide an isolated instance
+            $mdb = clone $mdb;
             if ($autoReset) {
                 $mdb->resetQuery();
             }
@@ -461,6 +463,7 @@ abstract class Model
      */
     public function save(): bool
     {
+        $db = static::db();
         try {
             if ($this->id) {
                 if (!$this->beforeUpdate()) {
@@ -474,7 +477,7 @@ abstract class Model
                         $this->_changed[$property] = ['AES' => $value];
                     }
                 }
-                $saved = empty($this->_changed) || static::db()
+                $saved = empty($this->_changed) || $db
                     ->where(static::$idField, $this->id)
                     ->update(static::$table, $this->_changed);
                 if ($saved) {
@@ -501,8 +504,7 @@ abstract class Model
                         $this->_changed[$property] = ['AES' => $value];
                     }
                 }
-                $this->id = static::db()
-                    ->insert(static::$table, $this->_changed);
+                $this->id = $db->insert(static::$table, $this->_changed);
                 if ($this->id) {
                     // Update the data array with the new ID if it wasn't set
                     if (!isset($this->_data[static::$idField])) {
@@ -516,14 +518,14 @@ abstract class Model
                     $this->_changed = [];
                     return true;
                 }
-                if (strstr(static::db()->getLastQuery(), "IGNORE")) {
+                if (strstr($db->getLastQuery(), "IGNORE")) {
                     return true;
                 }
             }
-            $ex = new DbException(static::db()->getLastError());
+            $ex = new DbException($db->getLastError());
             throw $ex;
         } finally {
-            static::db()->resetQuery();
+            $db->resetQuery();
         }
     }
 
@@ -927,14 +929,26 @@ abstract class Model
      * @param string $field The field to check
      * @param mixed $value The value to check for uniqueness
      * @param mixed|null $id ID to exclude from the check (optional)
+     * @return bool True if unique, false otherwise
+     */
+    public static function isUnique($field, $value, $id = null): bool
+    {
+        return !static::assureUnique($field, $value, $id);
+    }
+
+    /**
+     * @param string $field The field to check
+     * @param mixed $value The value to check for uniqueness
+     * @param mixed|null $id ID to exclude from the check (optional)
      * @return mixed|null The ID of an existing record or null if unique
      */
     public static function assureUnique($field, $value, $id = null)
     {
+        $db = static::db();
         if ($id) {
-            static::db()->where(static::$idField, $id, '!=');
+            $db->where(static::$idField, $id, '!=');
         }
-        return static::db()->where($field, $value)->getValue(static::$table, static::$idField);
+        return $db->where($field, $value)->getValue(static::$table, static::$idField);
     }
 
     /**
@@ -968,24 +982,20 @@ abstract class Model
      * @param string|null $key The field to use as array key (optional, defaults to ID)
      * @return array<mixed> Array of records or field values
      */
-    public static function list($field = null, $key = null): array
+    public static function list($field = null, $key = 'id'): array
     {
+        $db = static::db();
         if (static::$listSorting) {
-            static::db()->orderBy(...static::$listSorting);
-        } elseif ($field) {
-            static::db()->orderBy($field, 'ASC');
+            $db->orderBy(...static::$listSorting);
+        } else {
+            $db->orderBy($field, 'ASC');
         }
-        if (!$key) {
-            $key = static::$idField;
+
+        $rows = $db->get(static::$table, null, $field ? $key . ', ' . $field : static::getSelect());
+        if (!$field) {
+            return array_map(fn($data) => new static($data), $rows);
         }
-        $rows = static::db()->get(static::$table, null, $field ? $key . ', ' . $field : static::getSelect());
-        $data = [];
-        foreach ($rows as $r) {
-            if (isset($r[$key])) {
-                $data[$r[$key]] = $field ? ($r[$field] ?? null) : $r;
-            }
-        }
-        return $data;
+        return array_column($rows, $field, $key);
     }
 
     /**
@@ -1268,69 +1278,58 @@ abstract class Model
         return [];
     }
 
-    /**
-     * Sets related data for a specified relation.
-     *
-     * @param string $related The relation name
-     * @param mixed $value The value to set (model instance, array, or ID)
-     */
-    public function setRelated($related, $value)
+    public function setRelated(string $relationName, $value): void
     {
-        if (empty(static::$relations[$related])) {
+        if (empty(static::$relations[$relationName])) {
             return;
         }
-        $r = static::$relations[$related];
-        if (!is_array($r)) {
-            return;
-        }
-        list($type, $class, $fk) = $r;
+        $relation = static::$relations[$relationName];
+        list($type, $relatedClass, $fk) = $relation;
+        $db = static::db();
+
         switch ($type) {
             case Model::BELONGS_TO:
             case Model::HAS_ONE:
-                if (is_a($value, $class)) {
-                    $this->update([$fk => $value->id]);
-                } elseif ($value == null) {
-                    $this->update([$fk => null]);
+                $this->update([$fk => (is_object($value) ? $value->id : $value)]);
+                break;
+            case Model::HAS_MANY:
+                if (is_array($value)) {
+                    foreach ($value as $v) {
+                        $v->update([$fk => $this->id]);
+                    }
+                } else {
+                    $value->update([$fk => $this->id]);
                 }
                 break;
-
-            case Model::BELONGS_TO_MANY: // Fall through
+            case Model::BELONGS_TO_MANY:
             case Model::HAS_MANY_THROUGH:
-                if (count($r) < 5) {
-                    break; // Not enough elements for pivot table configuration
+                if (count($relation) < 5) {
+                    break;
                 }
-                $join = $r[3];
-                $jfk = $r[4];
-                if (is_a($value, $class)) {
-                    static::db()->ignore()->insert($join, [$fk => $value->id, $jfk => $this->id]);
-                } elseif (is_array($value) && !empty($value)) {
-                    if (is_a(current($value), $class)) {
-                        $ids = [];
-                        foreach ($value as $v) {
-                            $ids[] = $v->id;
+                $joinTable = $relation[3];
+                $jfk = $relation[4];
+                if (is_array($value)) {
+                    $db->where($jfk, $this->id)->delete($joinTable);
+                    $data = [];
+                    foreach ($value as $v) {
+                        if ($v instanceof Model) {
+                            $db->ignore()->insert($joinTable, [$fk => $v->id, $jfk => $this->id]);
+                        } else {
+                            $data[] = [$fk => $v, $jfk => $this->id];
                         }
-                        $value = $ids;
                     }
-                    static::db()->where($jfk, $this->id)
-                        ->delete($join);
-                    if (!empty($value)) {
-                        static::db()->where($jfk, $this->id)
-                            ->where($fk, $value, 'NOT IN')
-                            ->delete($join);
-                        $data = [];
-                        foreach ($value as $a) {
-                            $data[] = [$fk => $a, $jfk => $this->id];
-                        }
-                        static::db()->ignore()->insertMulti($join, $data);
+                    if (!empty($data)) {
+                        $db->ignore()->insertMulti($joinTable, $data);
                     }
-                } elseif (empty($value)) {
-                    static::db()->where($jfk, $this->id)->delete($join);
                 } else {
-                    static::db()->ignore()->insert($join, [$fk => $value, $jfk => $this->id]);
+                    $db->where($jfk, $this->id)->delete($joinTable);
+                    $db->ignore()->insert($joinTable, [$fk => (is_object($value) ? $value->id : $value), $jfk => $this->id]);
                 }
+                break;
+            default:
                 break;
         }
-        unset($this->relatedCache[$related]);
+        unset($this->relatedCache[$relationName]);
     }
 
     /**

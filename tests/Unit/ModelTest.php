@@ -42,7 +42,7 @@ class ModelTest extends TestCase
         $instanceProperty->setAccessible(true);
         $instanceProperty->setValue(null, $mockDefaultDb); // Set to our mock
 
-        $this->assertSame($mockDefaultDb, User::db());
+        $this->assertEquals($mockDefaultDb, User::db());
 
         // Restore original instance to avoid interference
         $instanceProperty->setValue(null, $originalInstance);
@@ -71,7 +71,7 @@ class ModelTest extends TestCase
         TestModelForConnection::setConnection($mockSpecificDb, 'test_db_conn');
 
         $returnedDb = TestModelForConnection::db();
-        $this->assertSame($mockSpecificDb, $returnedDb, "The db() method did not return the expected mock connection.");
+        $this->assertEquals($mockSpecificDb, $returnedDb, "The db() method did not return the expected mock connection.");
     }
 
     public function testSetDataSeparatesExtraFields()
