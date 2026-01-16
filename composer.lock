@@ -4,20 +4,20 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "859837905a0af6ea3502179276f2d478",
+    "content-hash": "83bfa8f58cdd3ea138312cc34ce1b357",
     "packages": [
         {
             "name": "alin-o/mysqli-database-class",
-            "version": "3.2.1",
+            "version": "3.2.3",
             "source": {
                 "type": "git",
                 "url": "https://github.com/alin-o/PHP-MySQLi-Database-Class.git",
-                "reference": "f54eef41f9883ee6194747b5180649ab81ed756a"
+                "reference": "3eb0a883dd4d3d8fd6b82b5f6114c852e3b22ccd"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/alin-o/PHP-MySQLi-Database-Class/zipball/f54eef41f9883ee6194747b5180649ab81ed756a",
-                "reference": "f54eef41f9883ee6194747b5180649ab81ed756a",
+                "url": "https://api.github.com/repos/alin-o/PHP-MySQLi-Database-Class/zipball/3eb0a883dd4d3d8fd6b82b5f6114c852e3b22ccd",
+                "reference": "3eb0a883dd4d3d8fd6b82b5f6114c852e3b22ccd",
                 "shasum": ""
             },
             "require": {
@@ -55,9 +55,9 @@
             ],
             "description": "PHP MySQL Wrapper which utilizes MySQLi and prepared statements",
             "support": {
-                "source": "https://github.com/alin-o/PHP-MySQLi-Database-Class/tree/v3.2.1"
+                "source": "https://github.com/alin-o/PHP-MySQLi-Database-Class/tree/v3.2.3"
             },
-            "time": "2026-01-09T19:25:21+00:00"
+            "time": "2026-01-16T12:05:19+00:00"
         }
     ],
     "packages-dev": [

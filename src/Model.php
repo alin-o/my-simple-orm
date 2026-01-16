@@ -753,6 +753,18 @@ abstract class Model
     }
 
     /**
+     * Proxies static calls to the database connection.
+     *
+     * @param string $name
+     * @param array $arguments
+     * @return mixed
+     */
+    public static function __callStatic($name, $arguments)
+    {
+        return static::db()->$name(...$arguments);
+    }
+
+    /**
      * Checks if a specific field or any fields have changed.
      *
      * @param string|null $elem The field to check (optional)

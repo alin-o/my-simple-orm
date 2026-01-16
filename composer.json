@@ -18,7 +18,7 @@
     },
     "require": {
         "php": ">=7.4.0",
-        "alin-o/mysqli-database-class": "^3.2.2"
+        "alin-o/mysqli-database-class": "^3.2.3"
     },
     "require-dev": {
         "symfony/dotenv": "^5.4",

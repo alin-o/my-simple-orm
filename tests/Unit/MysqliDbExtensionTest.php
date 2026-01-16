@@ -157,4 +157,35 @@ class MysqliDbExtensionTest extends TestCase
         $this->assertEquals('Charlie', $subset[0]['name']);
         $this->assertEquals('David', $subset[1]['name']);
     }
+
+    public function testOffsetWithoutLimit()
+    {
+        // If we only set offset, MysqliDb needs a limit.
+        // Laravel handles this by setting a very large limit.
+        // My implementation in _buildLimit handles array($offset, $numRows).
+        // If numRows is null, it should ideally use a large number if offset is present, 
+        // OR MysqliDb might already have a fallback.
+
+        $subset = $this->db->from('test_users')
+            ->orderBy('id', 'ASC')
+            ->offset(3)
+            ->get();
+
+        // Should get David(4) and Eve(5)
+        $this->assertCount(2, $subset);
+        $this->assertEquals('David', $subset[0]['name']);
+        $this->assertEquals('Eve', $subset[1]['name']);
+    }
+
+    public function testNonExistentColumn()
+    {
+        $this->expectException(\mysqli_sql_exception::class);
+        $this->db->from('test_users')->value('non_existent');
+    }
+
+    public function testNonExistentColumnPluck()
+    {
+        $this->expectException(\mysqli_sql_exception::class);
+        $this->db->from('test_users')->pluck('non_existent');
+    }
 }
