@@ -103,10 +103,12 @@ abstract class Model
      */
     protected $_withRelated = [];
 
-    /**
-     * @var array<string, \AlinO\Db\MysqliDb> Cached database connections by database name
-     */
     protected static $_conn = [];
+
+    /**
+     * @var array<string, \AlinO\Db\MysqliDb> The most recently created builder clones for inspection (getLastQuery, etc.)
+     */
+    protected static $_lastInstances = [];
 
     /**
      * @var \DateTimeZone|null Timezone for date operations
@@ -257,6 +259,10 @@ abstract class Model
                 $mdb->resetQuery();
             }
             $mdb->setModel(static::class, static::getTable(), static::getSelect());
+
+            // Store as the last used instance for this connection for inspection (getLastQuery, etc.)
+            static::$_lastInstances[$dbName] = $mdb;
+
             return $mdb;
         }
         throw new DbException("Database connection `$dbName` not found");
@@ -763,7 +769,60 @@ abstract class Model
      */
     public static function __callStatic($name, $arguments)
     {
+        // Special case for inspector methods: return from the last used instance if exists
+        // This avoids creating a new clone (empty state) when just checking errors/queries.
+        if (in_array($name, ['getLastQuery', 'getLastError', 'getLastParams', 'getInsertId'])) {
+            $dbName = static::$database ?: 'default';
+            if (isset(static::$_lastInstances[$dbName])) {
+                return static::$_lastInstances[$dbName]->$name(...$arguments);
+            }
+        }
+
         return static::db()->$name(...$arguments);
+    }
+
+    /**
+     * Gets the last executed query for the model's connection.
+     *
+     * @return string
+     */
+    public static function getLastQuery(): string
+    {
+        $dbName = static::$database ?: 'default';
+        return isset(static::$_lastInstances[$dbName]) ? static::$_lastInstances[$dbName]->getLastQuery() : '';
+    }
+
+    /**
+     * Gets the last database error for the model's connection.
+     *
+     * @return string
+     */
+    public static function getLastError(): string
+    {
+        $dbName = static::$database ?: 'default';
+        return isset(static::$_lastInstances[$dbName]) ? static::$_lastInstances[$dbName]->getLastError() : '';
+    }
+
+    /**
+     * Gets the total count of rows for the last query executed with withTotalCount().
+     *
+     * @return int
+     */
+    public static function totalCount(): int
+    {
+        $dbName = static::$database ?: 'default';
+        return isset(static::$_lastInstances[$dbName]) ? static::$_lastInstances[$dbName]->totalCount : 0;
+    }
+
+    /**
+     * Gets the total pages for the last paginated query.
+     *
+     * @return int
+     */
+    public static function totalPages(): int
+    {
+        $dbName = static::$database ?: 'default';
+        return isset(static::$_lastInstances[$dbName]) ? static::$_lastInstances[$dbName]->totalPages : 0;
     }
 
     /**

@@ -24,5 +24,5 @@
         "symfony/dotenv": "^5.4",
         "phpunit/phpunit": "^9.6"
     },
-    "version": "2.0.1"
+    "version": "2.0.2"
 }

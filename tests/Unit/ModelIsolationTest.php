@@ -33,12 +33,16 @@ class ModelIsolationTest extends TestCase
         // First query with a where clause
         User::where('id', 123)->first();
 
+        // The static getLastQuery() should return the query that was just executed
+        $lastQuery = User::getLastQuery();
+        $this->assertStringContainsString('123', $lastQuery, "Static getLastQuery() should return the last executed query.");
+
         // Second query should NOT have 'id = 123'
         // We can verify this by checking the last query of a NEW builder instance
         $db = User::db();
         $db->get('users');
-        $lastQuery = $db->getLastQuery();
+        $lastQueryFromNewBuilder = $db->getLastQuery();
 
-        $this->assertStringNotContainsString('123', $lastQuery, "Query state should not leak from previous calls.");
+        $this->assertStringNotContainsString('123', $lastQueryFromNewBuilder, "New builder instance should be fresh.");
     }
 }
