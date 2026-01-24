@@ -167,7 +167,7 @@ abstract class Model
         } elseif (!empty($id)) {
             $data = static::db()->where(static::$idField, $id)->getOne(static::$table, static::getSelect());
             if ($data) {
-                $this->setData($data);
+                $this->setData($data, true);
                 $this->loaded();
             } else {
                 $this->id = $id;
@@ -213,15 +213,17 @@ abstract class Model
      * Sets the model's data from an array, separating database fields and extra fields.
      *
      * @param array<string, mixed> $data Key-value pairs to set
+     * @param bool $fromDatabase Whether this data is coming from the database (true) or user input (false)
      */
-    public function setData($data)
+    public function setData($data, $fromDatabase = false)
     {
         $this->_fields = [];
         $this->_extra = [];
         $this->_data = [];
         $this->_changed = [];
         foreach ($data as $k => $v) {
-            if (!empty(static::$fillable) && !in_array($k, static::$fillable)) {
+            // Only apply fillable filtering for user input, not when loading from database
+            if (!$fromDatabase && !empty(static::$fillable) && !in_array($k, static::$fillable)) {
                 continue; // skip fields not in fillable
             }
             if (in_array($k, static::$extraFields)) {
@@ -704,11 +706,7 @@ abstract class Model
         } elseif (in_array($property, $this->_fields)) {
             if (($this->_data[$property] ?? null) != $value) {
                 $this->_data[$property] = $value;
-                if (in_array($property, static::$aes_fields)) {
-                    $this->_changed[$property] = ['AES' => $value];
-                } else {
-                    $this->_changed[$property] = $value;
-                }
+                $this->_changed[$property] = $this->_data[$property];
             }
         } elseif ($this->id && !empty(static::$relations[$property])) {
             $this->setRelated($property, $value);
@@ -947,7 +945,16 @@ abstract class Model
     public static function getSelect()
     {
         $select = static::$select;
-        if ($select != '*' && !empty(static::$aes_fields)) {
+        if (!empty(static::$aes_fields)) {
+            // If select is just '*', append AES_DECRYPT for encrypted fields
+            if ($select == '*') {
+                $aesSelects = [];
+                foreach (static::$aes_fields as $field) {
+                    $aesSelects[] = "AES_DECRYPT(`" . addslashes($field) . "`, @aes_key) as `" . addslashes($field) . "`";
+                }
+                return $select . ', ' . implode(', ', $aesSelects);
+            }
+
             // Replace AES fields in select with AES_DECRYPT
             $fields = array_map('trim', explode(',', $select));
             $processedFields = [];
