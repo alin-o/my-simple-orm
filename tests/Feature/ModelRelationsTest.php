@@ -262,6 +262,49 @@ class ModelRelationsTest extends TestCase
         $this->assertCount(0, $roles, 'User should have no roles after removal');
     }
 
+    public function testSyncPreservesExtraPivotColumns(): void
+    {
+        $role1 = Role::create(['name' => 'role_sync_1_' . uniqid()]);
+        $role2 = Role::create(['name' => 'role_sync_2_' . uniqid()]);
+
+        // Setup: Assign role1 with an extra column manual insert
+        User::db()->insert('user_roles', [
+            'user_id' => $this->user->id,
+            'role_id' => $role1->id,
+            'organization_id' => 99 // This is our extra column to preserve
+        ]);
+
+        $roles = $this->user->roles;
+        $this->assertCount(1, $roles, 'User should have one role');
+
+        // Action: Sync same roles (assigning the collection back)
+        // This should trigger the new optimized sync logic
+        $this->user->roles = $roles;
+
+        // Verification: The organization_id should still be 99
+        $pivot = Role::db()
+            ->where('user_id', $this->user->id)
+            ->where('role_id', $role1->id)
+            ->getOne('user_roles');
+
+        $this->assertNotNull($pivot, 'Pivot entry should still exist');
+        $this->assertEquals(99, $pivot['organization_id'], 'Extra pivot column should be preserved after sync');
+
+        // Action: Sync with a new role added
+        $this->user->roles = [$role1->id, $role2->id];
+
+        // Verification: Existing pivot should still have its extra data
+        $pivot = Role::db()
+            ->where('user_id', $this->user->id)
+            ->where('role_id', $role1->id)
+            ->getOne('user_roles');
+        $this->assertEquals(99, $pivot['organization_id'], 'Extra pivot column should still be preserved after adding another role');
+
+        // Cleanup
+        $role1->delete();
+        $role2->delete();
+    }
+
     public function testCanGetUsersForRole(): void
     {
         $role = Role::create(['name' => 'role_' . uniqid()]);

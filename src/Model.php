@@ -1374,23 +1374,42 @@ abstract class Model
                 }
                 $joinTable = $relation[3];
                 $jfk = $relation[4];
+
+                // Get current related IDs from pivot table (use fresh db instance)
+                $existingRows = static::db()->where($jfk, $this->id)->get($joinTable, null, $fk);
+                $existingIds = array_column($existingRows, $fk);
+
+                // Normalize new value to array of IDs
+                $newIds = [];
                 if (is_array($value)) {
-                    $db->where($jfk, $this->id)->delete($joinTable);
-                    $data = [];
                     foreach ($value as $v) {
-                        if ($v instanceof Model) {
-                            $db->ignore()->insert($joinTable, [$fk => $v->id, $jfk => $this->id]);
-                        } else {
-                            $data[] = [$fk => $v, $jfk => $this->id];
-                        }
-                    }
-                    if (!empty($data)) {
-                        $db->ignore()->insertMulti($joinTable, $data);
+                        $newIds[] = $v instanceof Model ? $v->id : $v;
                     }
                 } else {
-                    $db->where($jfk, $this->id)->delete($joinTable);
-                    $db->ignore()->insert($joinTable, [$fk => (is_object($value) ? $value->id : $value), $jfk => $this->id]);
+                    $newIds[] = is_object($value) ? $value->id : $value;
                 }
+
+                // Calculate what needs to be added and removed
+                $toAdd = array_diff($newIds, $existingIds);
+                $toRemove = array_diff($existingIds, $newIds);
+
+                // Remove entries that are no longer in the relation (fresh db instance)
+                if (!empty($toRemove)) {
+                    static::db()
+                        ->where($jfk, $this->id)
+                        ->where($fk, $toRemove, 'IN')
+                        ->delete($joinTable);
+                }
+
+                // Add new entries (only ones that don't exist, fresh db instance)
+                if (!empty($toAdd)) {
+                    $data = [];
+                    foreach ($toAdd as $id) {
+                        $data[] = [$fk => $id, $jfk => $this->id];
+                    }
+                    static::db()->ignore()->insertMulti($joinTable, $data);
+                }
+                // Note: Existing entries are left untouched, preserving any additional pivot columns
                 break;
             default:
                 break;

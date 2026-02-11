@@ -23,12 +23,17 @@ abstract class TestCase extends \PHPUnit\Framework\TestCase
         parent::setUpBeforeClass();
         $p = getcwd();
         if (file_exists($p . '/.env.testing')) {
-            $dotenv = new Dotenv();
-            $dotenv->load($p . '/.env.testing');
+            if (class_exists('Symfony\Component\Dotenv\Dotenv')) {
+                $dotenv = new \Symfony\Component\Dotenv\Dotenv();
+                $dotenv->load($p . '/.env.testing');
+            } elseif (class_exists('Dotenv\Dotenv')) {
+                $dotenv = \Dotenv\Dotenv::createImmutable($p, '.env.testing');
+                $dotenv->load();
+            }
         }
         $host = @$_ENV['DB_HOST'] ?: getenv('DB_HOST');
-        $user = @$_ENV['DB_USER'] ?: getenv('DB_USER');
-        $pass = @$_ENV['DB_PASS'] ?: getenv('DB_PASS');
+        $user = @$_ENV['DB_USERNAME_MIG'] ?: @$_ENV['DB_USER'] ?: @$_ENV['DB_USERNAME'] ?: getenv('DB_USER');
+        $pass = @$_ENV['DB_PASSWORD_MIG'] ?: @$_ENV['DB_PASS'] ?: @$_ENV['DB_PASSWORD'] ?: getenv('DB_PASS');
         $dbname = @$_ENV['DB_DATABASE'] ?: getenv('DB_DATABASE');
         $port = @$_ENV['DB_PORT'] ?: getenv('DB_PORT');
         static::$defaultDb = $db = new MysqliDb($host, $user, $pass, $dbname, $port);
@@ -39,12 +44,21 @@ abstract class TestCase extends \PHPUnit\Framework\TestCase
             echo "Database connection error: " . $e->getMessage();
             exit;
         }
-        $aes = @$_ENV['DB_AES'] ?: getenv('DB_AES');
+        $aes = @$_ENV['DB_AES'] ?: @$_ENV['DB_AES_KEY'] ?: getenv('DB_AES');
         if (!empty($aes)) {
             $db->rawQuery("SET @aes_key = SHA2('$aes', 512)");
         }
+
+        // Drop tables if they exist to ensure clean state for tests
+        $db->rawQuery("SET FOREIGN_KEY_CHECKS = 0");
+        $tables = ['user_roles', 'roles', 'user_profiles', 'posts', 'users', 'addresses', 'countries'];
+        foreach ($tables as $table) {
+            $db->rawQuery("DROP TABLE IF EXISTS `$table` CASCADE");
+        }
+        $db->rawQuery("SET FOREIGN_KEY_CHECKS = 1");
+
         // Create countries table
-            $db->rawQuery("CREATE TABLE IF NOT EXISTS `countries` (
+        $db->rawQuery("CREATE TABLE IF NOT EXISTS `countries` (
                 `id` int(11) NOT NULL AUTO_INCREMENT,
                 `name` varchar(100) NOT NULL,
                 PRIMARY KEY (`id`)
@@ -131,6 +145,7 @@ abstract class TestCase extends \PHPUnit\Framework\TestCase
             $db->rawQuery("CREATE TABLE IF NOT EXISTS `user_roles` (
                 `user_id` int(11) NOT NULL,
                 `role_id` int(11) NOT NULL,
+                `organization_id` int(11) DEFAULT NULL,
                 PRIMARY KEY (`user_id`, `role_id`),
                 KEY `role_id` (`role_id`)
             )");
