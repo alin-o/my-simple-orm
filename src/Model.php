@@ -81,12 +81,7 @@ abstract class Model
      * If this column exists in the table, AES-256-CBC with per-row IV is used.
      * If missing, falls back to legacy behavior (no IV).
      */
-    protected static $aes_iv_column = 'aes_iv';
-
-    /**
-     * @var array<string, bool> Cache of IV column existence per table (per request).
-     */
-    protected static $_aes_iv_cache = [];
+    protected static $aes_iv_column = '';
 
     /**
      * @var array<string> Fields to be automatically stored as json string
@@ -142,36 +137,6 @@ abstract class Model
      */
     protected static $listSorting = null;
 
-    /**
-     * Check if the model's table has an AES IV column.
-     * Result is cached per table for the duration of the request.
-     *
-     * @return bool
-     */
-    protected static function hasAesIvColumn(): bool
-    {
-        if (empty(static::$aes_fields)) {
-            return false;
-        }
-
-        $table = static::getTable();
-        if (isset(static::$_aes_iv_cache[$table])) {
-            return static::$_aes_iv_cache[$table];
-        }
-
-        try {
-            $ivCol = static::$aes_iv_column;
-            $result = static::db()->rawQuery(
-                "SHOW COLUMNS FROM `$table` LIKE ?",
-                [$ivCol]
-            );
-            static::$_aes_iv_cache[$table] = !empty($result);
-        } catch (\Exception $e) {
-            static::$_aes_iv_cache[$table] = false;
-        }
-
-        return static::$_aes_iv_cache[$table];
-    }
 
     /**
      * @var array<string, mixed> Cache for lazy-loaded related data
@@ -520,7 +485,7 @@ abstract class Model
                 if (!$this->beforeUpdate()) {
                     return false;
                 }
-                $hasIv = static::hasAesIvColumn();
+                $hasIv = !empty(static::$aes_iv_column);
                 $hasAesChange = false;
                 foreach ($this->_changed as $property => $value) {
                     if (in_array($property, static::$json_fields) && !is_string($value)) {
@@ -559,7 +524,7 @@ abstract class Model
                     $this->_data[static::$idField] = \uniqid();
                 }
                 $this->_changed = $this->_data;
-                $hasIv = static::hasAesIvColumn();
+                $hasIv = !empty(static::$aes_iv_column);
                 $hasAesField = false;
                 $iv = null;
                 foreach ($this->_changed as $property => $value) {
@@ -690,7 +655,7 @@ abstract class Model
             return $this->$m();
         }
         if (in_array($property, static::$aes_fields) && empty($this->_data[$property])) {
-            if (static::hasAesIvColumn()) {
+            if (!empty(static::$aes_iv_column)) {
                 $ivCol = static::$aes_iv_column;
                 $d = static::db()
                     ->where(static::$idField, $this->id)
@@ -1022,7 +987,7 @@ abstract class Model
         $select = static::$select;
         if (!empty(static::$aes_fields)) {
             // Determine if we should use IV-based decryption
-            $useIv = static::hasAesIvColumn();
+            $useIv = !empty(static::$aes_iv_column);
             $ivCol = static::$aes_iv_column;
 
             $buildDecrypt = function (string $fieldName) use ($useIv, $ivCol): string {
