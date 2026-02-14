@@ -259,18 +259,22 @@ abstract class Model
             static::$_conn[$dbName] = MysqliDb::getInstance();
             $mdb = static::$_conn[$dbName];
         } else {
-            $mdb = null;
+            // If static::$database is set but no connection exists for it
+            // $mdb remains null, and an exception will be thrown below.
         }
 
         if ($mdb) {
             $master = $mdb;
             // Clone the master connection to provide an isolated instance
             $mdb = clone $mdb;
-            // Ensure the trace is shared with the master connection for debug tracking
+            // Ensure the trace array is shared with the master (unified logging)
             $mdb->trace = &$master->trace;
 
             if ($autoReset) {
+                $traceEnabled = $mdb->traceEnabled;
+                $mdb->traceEnabled = false;
                 $mdb->resetQuery();
+                $mdb->traceEnabled = $traceEnabled;
             }
             $mdb->setModel(static::class, static::getTable(), static::getSelect());
 
