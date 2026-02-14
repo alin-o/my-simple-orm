@@ -18,11 +18,11 @@
     },
     "require": {
         "php": ">=7.4.0",
-        "alin-o/mysqli-database-class": "^3.2.3"
+        "alin-o/mysqli-database-class": "^3.2.5"
     },
     "require-dev": {
         "symfony/dotenv": "^5.4",
         "phpunit/phpunit": "^9.6"
     },
-    "version": "2.0.4"
+    "version": "2.0.5"
 }

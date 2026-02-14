@@ -77,6 +77,18 @@ abstract class Model
     protected static $aes_fields = [];
 
     /**
+     * @var string The column name used to store the AES initialization vector (IV).
+     * If this column exists in the table, AES-256-CBC with per-row IV is used.
+     * If missing, falls back to legacy behavior (no IV).
+     */
+    protected static $aes_iv_column = 'aes_iv';
+
+    /**
+     * @var array<string, bool> Cache of IV column existence per table (per request).
+     */
+    protected static $_aes_iv_cache = [];
+
+    /**
      * @var array<string> Fields to be automatically stored as json string
      */
     protected static $json_fields = [];
@@ -129,6 +141,37 @@ abstract class Model
      * @var array|null Sorting configuration for list() method [field, direction]
      */
     protected static $listSorting = null;
+
+    /**
+     * Check if the model's table has an AES IV column.
+     * Result is cached per table for the duration of the request.
+     *
+     * @return bool
+     */
+    protected static function hasAesIvColumn(): bool
+    {
+        if (empty(static::$aes_fields)) {
+            return false;
+        }
+
+        $table = static::getTable();
+        if (isset(static::$_aes_iv_cache[$table])) {
+            return static::$_aes_iv_cache[$table];
+        }
+
+        try {
+            $ivCol = static::$aes_iv_column;
+            $result = static::db()->rawQuery(
+                "SHOW COLUMNS FROM `$table` LIKE ?",
+                [$ivCol]
+            );
+            static::$_aes_iv_cache[$table] = !empty($result);
+        } catch (\Exception $e) {
+            static::$_aes_iv_cache[$table] = false;
+        }
+
+        return static::$_aes_iv_cache[$table];
+    }
 
     /**
      * @var array<string, mixed> Cache for lazy-loaded related data
@@ -477,13 +520,25 @@ abstract class Model
                 if (!$this->beforeUpdate()) {
                     return false;
                 }
+                $hasIv = static::hasAesIvColumn();
+                $hasAesChange = false;
                 foreach ($this->_changed as $property => $value) {
                     if (in_array($property, static::$json_fields) && !is_string($value)) {
                         $value = $this->_changed[$property] = json_encode($value);
                     }
                     if (in_array($property, static::$aes_fields) && !is_array($value)) {
-                        $this->_changed[$property] = ['AES' => $value];
+                        if ($hasIv) {
+                            $iv = random_bytes(16);
+                            $this->_changed[$property] = ['AES' => ['value' => $value, 'iv' => $iv]];
+                            $hasAesChange = true;
+                        } else {
+                            $this->_changed[$property] = ['AES' => $value];
+                        }
                     }
+                }
+                // Generate and store a single IV per save when using CBC mode
+                if ($hasIv && $hasAesChange) {
+                    $this->_changed[static::$aes_iv_column] = $iv;
                 }
                 $saved = empty($this->_changed) || $db
                     ->where(static::$idField, $this->id)
@@ -504,13 +559,26 @@ abstract class Model
                     $this->_data[static::$idField] = \uniqid();
                 }
                 $this->_changed = $this->_data;
+                $hasIv = static::hasAesIvColumn();
+                $hasAesField = false;
+                $iv = null;
                 foreach ($this->_changed as $property => $value) {
                     if (in_array($property, static::$json_fields) && !is_string($value)) {
                         $value = $this->_changed[$property] = json_encode($value);
                     }
                     if (in_array($property, static::$aes_fields) && !is_array($value)) {
-                        $this->_changed[$property] = ['AES' => $value];
+                        if ($hasIv) {
+                            $iv = $iv ?? random_bytes(16);
+                            $this->_changed[$property] = ['AES' => ['value' => $value, 'iv' => $iv]];
+                            $hasAesField = true;
+                        } else {
+                            $this->_changed[$property] = ['AES' => $value];
+                        }
                     }
+                }
+                // Store IV for new records when using CBC mode
+                if ($hasIv && $hasAesField && $iv) {
+                    $this->_changed[static::$aes_iv_column] = $iv;
                 }
                 $this->id = $db->insert(static::$table, $this->_changed);
                 if ($this->id) {
@@ -622,10 +690,17 @@ abstract class Model
             return $this->$m();
         }
         if (in_array($property, static::$aes_fields) && empty($this->_data[$property])) {
-            $d = static::db()
-                ->where(static::$idField, $this->id)
-                ->getOne(static::$table, "AES_DECRYPT(`$property`, @aes_key) as `$property`");
-            $this->_data[$property] = $d[$property];
+            if (static::hasAesIvColumn()) {
+                $ivCol = static::$aes_iv_column;
+                $d = static::db()
+                    ->where(static::$idField, $this->id)
+                    ->getOne(static::$table, "AES_DECRYPT(`$property`, @aes_key, `$ivCol`) as `$property`");
+            } else {
+                $d = static::db()
+                    ->where(static::$idField, $this->id)
+                    ->getOne(static::$table, "AES_DECRYPT(`$property`, @aes_key) as `$property`");
+            }
+            $this->_data[$property] = $d[$property] ?? null;
             if (!in_array($property, $this->_fields)) {
                 $this->_fields[] = $property;
             }
@@ -946,11 +1021,23 @@ abstract class Model
     {
         $select = static::$select;
         if (!empty(static::$aes_fields)) {
+            // Determine if we should use IV-based decryption
+            $useIv = static::hasAesIvColumn();
+            $ivCol = static::$aes_iv_column;
+
+            $buildDecrypt = function (string $fieldName) use ($useIv, $ivCol): string {
+                $escaped = addslashes($fieldName);
+                if ($useIv) {
+                    return "AES_DECRYPT(`{$escaped}`, @aes_key, `{$ivCol}`) as `{$escaped}`";
+                }
+                return "AES_DECRYPT(`{$escaped}`, @aes_key) as `{$escaped}`";
+            };
+
             // If select is just '*', append AES_DECRYPT for encrypted fields
             if ($select == '*') {
                 $aesSelects = [];
                 foreach (static::$aes_fields as $field) {
-                    $aesSelects[] = "AES_DECRYPT(`" . addslashes($field) . "`, @aes_key) as `" . addslashes($field) . "`";
+                    $aesSelects[] = $buildDecrypt($field);
                 }
                 return $select . ', ' . implode(', ', $aesSelects);
             }
@@ -964,7 +1051,7 @@ abstract class Model
                 } else if (!stristr($field, 'AES_DECRYPT')) {
                     $fieldName = trim($field, "` ");
                     if (in_array($fieldName, static::$aes_fields)) {
-                        $processedFields[] = "AES_DECRYPT(`" . addslashes($fieldName) . "`, @aes_key) as `" . addslashes($fieldName) . "`";
+                        $processedFields[] = $buildDecrypt($fieldName);
                     } else if (strpos($fieldName, ' ')) {
                         $processedFields[] = $fieldName;
                     } else {
