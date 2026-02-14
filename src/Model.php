@@ -263,8 +263,12 @@ abstract class Model
         }
 
         if ($mdb) {
+            $master = $mdb;
             // Clone the master connection to provide an isolated instance
             $mdb = clone $mdb;
+            // Ensure the trace is shared with the master connection for debug tracking
+            $mdb->trace = &$master->trace;
+
             if ($autoReset) {
                 $mdb->resetQuery();
             }
