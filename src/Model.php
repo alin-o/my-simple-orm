@@ -231,7 +231,8 @@ abstract class Model
         $this->_changed = [];
         foreach ($data as $k => $v) {
             // Only apply fillable filtering for user input, not when loading from database
-            if (!$fromDatabase && !empty(static::$fillable) && !in_array($k, static::$fillable)) {
+            // Always allow the ID field through (needed for hydration via all()/constructor)
+            if (!$fromDatabase && !empty(static::$fillable) && $k !== static::$idField && !in_array($k, static::$fillable)) {
                 continue; // skip fields not in fillable
             }
             if (in_array($k, static::$extraFields)) {
