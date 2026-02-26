@@ -501,18 +501,32 @@ abstract class Model
                         $value = $this->_changed[$property] = json_encode($value);
                     }
                     if (in_array($property, static::$aes_fields) && !is_array($value)) {
-                        if ($hasIv) {
-                            $iv = random_bytes(16);
-                            $this->_changed[$property] = ['AES' => ['value' => $value, 'iv' => $iv]];
-                            $hasAesChange = true;
+                        $hasAesChange = true;
+                    }
+                }
+                // When any AES field changes with IV mode, re-encrypt ALL AES fields
+                // with a single new IV to keep them in sync (they share one IV column)
+                if ($hasIv && $hasAesChange) {
+                    $iv = random_bytes(16);
+                    foreach (static::$aes_fields as $field) {
+                        // Use changed value if present, otherwise load current plaintext
+                        if (array_key_exists($field, $this->_changed)) {
+                            $val = $this->_changed[$field];
                         } else {
+                            $val = $this->$field;
+                        }
+                        if ($val !== null && !is_array($val)) {
+                            $this->_changed[$field] = ['AES' => ['value' => $val, 'iv' => $iv]];
+                        }
+                    }
+                    $this->_changed[static::$aes_iv_column] = $iv;
+                } elseif ($hasAesChange) {
+                    // Legacy mode (no IV) — encrypt changed fields only
+                    foreach ($this->_changed as $property => $value) {
+                        if (in_array($property, static::$aes_fields) && !is_array($value)) {
                             $this->_changed[$property] = ['AES' => $value];
                         }
                     }
-                }
-                // Generate and store a single IV per save when using CBC mode
-                if ($hasIv && $hasAesChange) {
-                    $this->_changed[static::$aes_iv_column] = $iv;
                 }
                 $saved = empty($this->_changed) || $db
                     ->where(static::$idField, $this->id)
