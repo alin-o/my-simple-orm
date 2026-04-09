@@ -27,7 +27,7 @@ abstract class TestCase extends \PHPUnit\Framework\TestCase
                 $dotenv = new \Symfony\Component\Dotenv\Dotenv();
                 $dotenv->load($p . '/.env.testing');
             } elseif (class_exists('Dotenv\Dotenv')) {
-                $dotenv = \Dotenv\Dotenv::createImmutable($p, '.env.testing');
+                $dotenv = \Dotenv\Dotenv::createMutable($p, '.env.testing');
                 $dotenv->load();
             }
         }
